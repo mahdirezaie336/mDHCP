@@ -34,6 +34,7 @@ class DHCP_Client:
         self.timer2 = threading.Timer(self.timer_formula, self.run)
 
     def run(self):
+        print('run ran')
         address, yiaddr, siaddr = self.sendDiscover()
         self.sendRequest(address, yiaddr, siaddr)
 
