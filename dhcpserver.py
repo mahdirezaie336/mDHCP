@@ -14,7 +14,7 @@ class DHCPServer(object):
     MAX_BYTES = 1024
     queues: dict[bytes, Queue]
 
-    def __init__(self):
+    def __init__(self, ip_address):
         # Loading configs from JSON file
         with open('configs.json', 'r') as config_file:
             configs = json.load(config_file)
@@ -38,19 +38,21 @@ class DHCPServer(object):
             self.__black_list = configs['black_list']
 
         self.queues = {}
+        self.address = ip_address
         pass
 
     def start(self):
         print("DHCP server is starting...\n")
 
-        serverSocket = socket(AF_INET, SOCK_DGRAM)
-        serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-        serverSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        serverSocket.bind(('', DHCPServer.server_port))
+        server_socket = socket(AF_INET, SOCK_DGRAM)
+        server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        server_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+        server_socket.bind(('', DHCPServer.server_port))
+
         while 1:
             try:
                 print("Wait DHCP discovery.")
-                message, address = serverSocket.recvfrom(DHCPServer.MAX_BYTES)
+                message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
                 print("Receive DHCP discovery.")
                 parsed_message = self.parseMessage(message)
                 xid = parsed_message['XID']
@@ -65,30 +67,39 @@ class DHCPServer(object):
                 pass
 
     def client_thread(self, xid: bytes):
-        sender_socket = socket(AF_INET, SOCK_DGRAM)
-        destination = ('255.255.255.255', DHCPServer.client_port)
         print("Send DHCP offer.", 'xid:', xid)
-        parsed_discovery = self.queues[xid].pop()
-        status, ip_address = self.check_mac(parsed_discovery)
-        if status == "blocked":
-            return
+        destination = ('255.255.255.255', DHCPServer.client_port)
 
-        offer_message = self.DHCPOffer(parsed_discovery, ip_address)
-        serverSocket.sendto(offer_message, destination)
-        while 1:
-            try:
-                print("Wait DHCP request.")
-                request_message, address = serverSocket.recvfrom(self.buffer_size)
-                print("Receive DHCP request.")
-                parsed_request = self.parseMessage(request_message)
+        # Client infinite loop handler
+        with socket(AF_INET, SOCK_DGRAM) as sender_socket:
+            while True:
+                # Getting from queue
+                try:
+                    parsed_discovery = self.queues[xid].pop()
+                except :
 
-                print("Send DHCP Ack.\n")
-                ack_message = self.DHCPOffer(parsed_request, ip_address)
-                serverSocket.sendto(ack_message, destination)
-                self.allocate_IP(ip_address, status)
-                self.ip_waiting.remove(ip_address)
-            except:
-                raise
+                # Checking if mac address is in black list
+                status, ip_address = self.check_mac(parsed_discovery)
+                if status == "blocked":
+                    print(ip_address, 'is in black list.\n')
+                    break
+
+                offer_message = self.get_offer(parsed_discovery, ip_address)
+                sender_socket.sendto(offer_message, destination)
+
+                try:
+                    print("Wait DHCP request.")
+                    request_message, address = sender_socket.recvfrom(DHCPServer.MAX_BYTES)
+                    print("Receive DHCP request.")
+                    parsed_request = self.parseMessage(request_message)
+
+                    print("Send DHCP Ack.\n")
+                    ack_message = self.get_offer(parsed_request, ip_address)
+                    sender_socket.sendto(ack_message, destination)
+                    self.allocate_IP(ip_address, status)
+                    self.ip_waiting.remove(ip_address)
+                except:
+                    raise
 
     def check_mac(self, parsed_discovery):
         lock = threading.Lock()
@@ -141,6 +152,32 @@ class DHCPServer(object):
 
         return parsed_packet
 
+    def get_offer(self, parsed_discovery, yiaddr):
+        # get the general form of message
+        offer_dict = self.message()
+        # now we should modify some fields
+        #  modify xid
+        xid = parsed_discovery['XID']
+        offer_dict['XID'] = bytes([int(xid[0:2], 16), int(xid[2:4], 16), int(xid[4:6], 16), int(xid[6:8], 16)])
+        #  modify yiaddr field
+        yiaddr_parts = yiaddr.split('.')
+        offer_dict['YIADDR'] = bytes(
+            [int(yiaddr_parts[0]), int(yiaddr_parts[1]), int(yiaddr_parts[2]), int(yiaddr_parts[3])])
+        #  modify siaddr
+        siaddr_parts = self.address.split('.')
+        offer_dict['SIADDR'] = bytes(
+            [int(siaddr_parts[0]), int(siaddr_parts[1]), int(siaddr_parts[2]), int(siaddr_parts[3])])
+        #  modify mac address
+        mac1 = parsed_discovery['CHADDR1']
+        mac2 = parsed_discovery['CHADDR2']
+        offer_dict['CHADDR1'] = bytes([int(mac1[0:2], 16), int(mac1[2:4], 16), int(mac1[4:6], 16), int(mac1[6:8], 16)])
+        offer_dict['CHADDR2'] = bytes([int(mac2[0:2], 16), int(mac2[2:4], 16), int(mac2[4:6], 16), int(mac2[6:8], 16)])
+        offer_dict['option1'] = bytes([0, 0, 53, 2])
+        # at the end we should join the values of dhcp offer dictionary
+        packet = b''.join(offer_dict.values())
+
+        return packet
+
     @staticmethod
     def offer_get():
         OP = bytes([0x02])
@@ -169,6 +206,37 @@ class DHCPServer(object):
         package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + YIADDR + SIADDR + GIADDR + CHADDR1 + CHADDR2 + CHADDR3 + CHADDR4 + CHADDR5 + Magiccookie + DHCPOptions1 + DHCPOptions2 + DHCPOptions3 + DHCPOptions4 + DHCPOptions5
 
         return package
+
+    def message(self):
+
+        sname = []
+        bname = []
+        for i in range(192):
+            if i < 64:
+                sname.append(0)
+            else:
+                bname.append(0)
+
+        packet = {'OP': bytes([0x02]),
+                  'HTYPE': bytes([0x01]),
+                  'HLEN': bytes([0x06]),
+                  'HOPS': bytes([0x00]),
+                  'XID': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'SECS': bytes([0x00, 0x00]),
+                  'FLAGS': bytes([0x00, 0x00]),
+                  'CIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'YIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'SIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'GIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'CHADDR1': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'CHADDR2': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'CHADDR3': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'CHADDR4': bytes([0x00, 0x00, 0x00, 0x00]),
+                  'SName': bytes(sname),
+                  'BName': bytes(bname),
+                  'MCookie': bytes([0x63, 0x82, 0x53, 0x63]),
+                  'option1': bytes([53, 1, 0, 0])}
+        return packet
 
     @staticmethod
     def pack_get():

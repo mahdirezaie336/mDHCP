@@ -26,5 +26,7 @@ class Queue:
 
     @synchronized
     def pop(self):
-        self.__sem.acquire(timeout=self.__sem_timeout)
-        return self.__queue_list.pop(0)
+        put = self.__sem.acquire(timeout=self.__sem_timeout)
+        if put:
+            return self.__queue_list.pop(0)
+        raise TimeoutError('Semaphore timeout.')
