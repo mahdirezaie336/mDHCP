@@ -4,6 +4,7 @@ import struct
 from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
 import binascii
+from queue import Queue
 
 
 class DHCPServer(object):
@@ -11,14 +12,30 @@ class DHCPServer(object):
     server_port = 67
     client_port = 68
     MAX_BYTES = 1024
+    queues: dict[bytes, Queue]
 
     def __init__(self):
         # Loading configs from JSON file
         with open('configs.json', 'r') as config_file:
             configs = json.load(config_file)
-            self.__ip_pool = []
+
+            # Setting IP Pool
+            self.__ip_pool = set()
             if configs['pool_mode'] == 'range':
+                ip_range = DHCPServer.ips(configs['range']['from'], configs['range']['to'])
+                for i in ip_range:
+                    self.__ip_pool.add(i)
+            elif configs['pool_mode'] == 'subnet':
                 pass
+
+            # Setting Lease Time
+            self.__lease_time = configs['lease_time']
+
+            # Reservation List
+            self.__reservation_list = configs['reservation_list']
+
+            # Block List
+            self.__black_list = configs['black_list']
 
         self.queues = {}
         pass
@@ -33,24 +50,25 @@ class DHCPServer(object):
         while 1:
             try:
                 print("Wait DHCP discovery.")
-                discovery_message, address = serverSocket.recvfrom(DHCPServer.MAX_BYTES)
+                message, address = serverSocket.recvfrom(DHCPServer.MAX_BYTES)
                 print("Receive DHCP discovery.")
-                discovery_parsed = self.parseMessage(discovery_message)
-                xid = discovery_parsed['XID']
+                parsed_message = self.parseMessage(message)
+                xid = parsed_message['XID']
                 if xid not in self.queues:
-                    if discovery_parsed['option1'][2:4] == bytes([1]):
-                        self.queues[xid] = []
-                        Thread(target=self.client_thread, args=(serverSocket, discovery_message)).start()
+                    if parsed_message['option1'][2:4] == bytes([1]):
+                        self.queues[xid] = Queue()
+                        self.queues[xid].add(parsed_message)
+                        Thread(target=self.client_thread, args=(xid)).start()
                 else:
-                    self.queues[xid].append(discovery_message)
-
+                    self.queues[xid].add(self.parseMessage(message))
             except:
                 pass
 
-    def client_thread(self, serverSocket, discovery_message):
+    def client_thread(self, xid: bytes):
+        sender_socket = socket(AF_INET, SOCK_DGRAM)
         destination = ('255.255.255.255', DHCPServer.client_port)
-        print("Send DHCP offer.")
-        parsed_discovery = self.parseMessage(discovery_message)
+        print("Send DHCP offer.", 'xid:', xid)
+        parsed_discovery = self.queues[xid].pop()
         status, ip_address = self.check_mac(parsed_discovery)
         if status == "blocked":
             return
@@ -71,6 +89,33 @@ class DHCPServer(object):
                 self.ip_waiting.remove(ip_address)
             except:
                 raise
+
+    def check_mac(self, parsed_discovery):
+        lock = threading.Lock()
+        mac_address = ':'.join((parsed_discovery['CHADDR1'][0:2], parsed_discovery['CHADDR1'][2:4],
+                                parsed_discovery['CHADDR1'][4:6], parsed_discovery['CHADDR1'][6:8],
+                                parsed_discovery['CHADDR2'][0:2], parsed_discovery['CHADDR2'][2:4]))
+
+        for mac in self.json_data['black_list']:
+            if mac == mac_address:
+                return "blocked", "invalid"
+
+        for mac in self.json_data['reservation_list'].keys():
+            if mac == mac_address:
+                return "reserved", self.json_data['reservation_list'].get(mac)
+        # this is the critical section and so we should use lock
+        """lock.acquire()
+        if len(self.dynamic_data) != 0:
+            for mac in self.dynamic_data.keys():
+                if mac == mac_address:
+                    return self.dynamic_data[mac].get("IP")"""
+        """ TO DO 
+         find the ip from subnet or range"""
+        lock.acquire()
+        ip = ""
+        self.ip_waiting.append(ip)
+        lock.release()
+        return mac_address, ip
 
     def parseMessage(self, response):
         message = binascii.hexlify(response)
