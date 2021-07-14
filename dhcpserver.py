@@ -1,16 +1,18 @@
 import socket
 import json
 import struct
-from threading import Thread
+from datetime import datetime
+from threading import Thread, Lock
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
+import socket as s
 import binascii
 from queue import Queue
 
 
 class DHCPServer(object):
 
-    server_port = 67
-    client_port = 68
+    server_port = 6700
+    client_port = 6800
     MAX_BYTES = 1024
     queues: dict[bytes, Queue]
 
@@ -34,11 +36,15 @@ class DHCPServer(object):
             # Reservation List
             self.__reservation_list = configs['reservation_list']
 
-            # Block List
+            # Black List
             self.__black_list = configs['black_list']
 
         self.queues = {}
         self.address = ip_address
+        self.dynamic_data = {}
+        self.client_num = 0
+
+        Thread(target=self.leaseTime_cheker, args=()).start()
         pass
 
     def start(self):
@@ -57,10 +63,10 @@ class DHCPServer(object):
                 parsed_message = self.parseMessage(message)
                 xid = parsed_message['XID']
                 if xid not in self.queues:
-                    if parsed_message['option1'][2:4] == bytes([1]):
-                        self.queues[xid] = Queue()
+                    if parsed_message['option1'][2:4] == b'01':
+                        self.queues[xid] = Queue(20)
                         self.queues[xid].add(parsed_message)
-                        Thread(target=self.client_thread, args=(xid)).start()
+                        Thread(target=self.client_thread, args=(xid,)).start()
                 else:
                     self.queues[xid].add(self.parseMessage(message))
             except:
@@ -72,61 +78,83 @@ class DHCPServer(object):
 
         # Client infinite loop handler
         with socket(AF_INET, SOCK_DGRAM) as sender_socket:
+            sender_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
             while True:
                 # Getting from queue
                 try:
-                    parsed_discovery = self.queues[xid].pop()
-                except :
+                    parsed_message = self.queues[xid].pop()
+                except TimeoutError as e:
+                    print(e)
+                    break
 
                 # Checking if mac address is in black list
-                status, ip_address = self.check_mac(parsed_discovery)
+                status, ip_address = self.check_mac(parsed_message)
                 if status == "blocked":
                     print(ip_address, 'is in black list.\n')
                     break
 
-                offer_message = self.get_offer(parsed_discovery, ip_address)
+                offer_message = self.get_offer(parsed_message, ip_address)
                 sender_socket.sendto(offer_message, destination)
 
+                # Getting request from queue
+                print("Wait DHCP request.")
                 try:
-                    print("Wait DHCP request.")
-                    request_message, address = sender_socket.recvfrom(DHCPServer.MAX_BYTES)
-                    print("Receive DHCP request.")
-                    parsed_request = self.parseMessage(request_message)
-
-                    print("Send DHCP Ack.\n")
-                    ack_message = self.get_offer(parsed_request, ip_address)
-                    sender_socket.sendto(ack_message, destination)
-                    self.allocate_IP(ip_address, status)
-                    self.ip_waiting.remove(ip_address)
-                except:
-                    raise
+                    parsed_message = self.queues[xid].pop()
+                except TimeoutError as e:
+                    print(e)
+                    break
+                print("Receive DHCP request.")
+                print("Send DHCP Ack.\n")
+                ack_message = self.get_ack(parsed_message, ip_address)
+                sender_socket.sendto(ack_message, destination)
+                self.allocate_IP(ip_address, status)
 
     def check_mac(self, parsed_discovery):
-        lock = threading.Lock()
-        mac_address = ':'.join((parsed_discovery['CHADDR1'][0:2], parsed_discovery['CHADDR1'][2:4],
+        lock = Lock()
+        mac_address = b':'.join((parsed_discovery['CHADDR1'][0:2], parsed_discovery['CHADDR1'][2:4],
                                 parsed_discovery['CHADDR1'][4:6], parsed_discovery['CHADDR1'][6:8],
                                 parsed_discovery['CHADDR2'][0:2], parsed_discovery['CHADDR2'][2:4]))
-
-        for mac in self.json_data['black_list']:
+        mac_address = mac_address.decode()
+        for mac in self.__black_list:
             if mac == mac_address:
                 return "blocked", "invalid"
 
-        for mac in self.json_data['reservation_list'].keys():
+        for mac in self.__reservation_list:
             if mac == mac_address:
-                return "reserved", self.json_data['reservation_list'].get(mac)
+                return "reserved", self.__reservation_list[mac]
         # this is the critical section and so we should use lock
-        """lock.acquire()
-        if len(self.dynamic_data) != 0:
-            for mac in self.dynamic_data.keys():
-                if mac == mac_address:
-                    return self.dynamic_data[mac].get("IP")"""
-        """ TO DO 
-         find the ip from subnet or range"""
         lock.acquire()
-        ip = ""
-        self.ip_waiting.append(ip)
+        ip = self.__ip_pool.pop()
         lock.release()
         return mac_address, ip
+
+    def allocate_IP(self, ip, mac_address):
+        # set the expire time
+        now = datetime.now()
+        currentTime = now.strftime("%H:%M:%S").split(":")
+        time_to_sec = int(currentTime[0]) * 3600 + int(currentTime[1] * 60) + int(currentTime[2]) + self.__lease_time
+        hour = int(time_to_sec / 3600)
+        minute = int((time_to_sec - hour * 3600) / 60)
+        sec = time_to_sec - minute * 60
+        expireTime = ':'.join((str(hour), str(minute), str(sec)))
+        self.dynamic_data[mac_address] = {
+            "Name": ''.join(("Desktop", str(self.client_num))),
+            "IP": ip,
+            "ExpireTime": expireTime
+        }
+
+    def leaseTime_cheker(self):
+        while 1:
+            now = datetime.now()
+            currentTime = now.strftime("%H:%M:%S").split(":")
+            currentTime_to_sec = int(currentTime[0]) * 3600 + int(currentTime[1] * 60) + int(currentTime[2])
+            if len(self.dynamic_data) != 0:
+                for mac in self.dynamic_data.keys():
+                    expireTime = self.dynamic_data[mac].get("ExpireTime").split(':')
+                    expireTime_to_sec = int(expireTime[0]) * 3600 + int(expireTime[1] * 60) + int(expireTime[2])
+                    if currentTime_to_sec >= expireTime_to_sec:
+                        address = self.dynamic_data.pop(mac)
+                        self.__ip_pool.add(address['IP'])
 
     def parseMessage(self, response):
         message = binascii.hexlify(response)
@@ -207,6 +235,32 @@ class DHCPServer(object):
 
         return package
 
+    def get_ack(self, parsed_request, yiaddr):
+        # get the general form of message
+        ack_dict = self.message()
+        # now we should modify some fields
+        #  modify xid
+        xid = parsed_request['XID']
+        ack_dict['XID'] = bytes([int(xid[0:2], 16), int(xid[2:4], 16), int(xid[4:6], 16), int(xid[6:8], 16)])
+        #  modify yiaddr field
+        yiaddr_parts = yiaddr.split('.')
+        ack_dict['YIADDR'] = bytes(
+            [int(yiaddr_parts[0]), int(yiaddr_parts[1]), int(yiaddr_parts[2]), int(yiaddr_parts[3])])
+        #  modify siaddr
+        siaddr_parts = self.address.split('.')
+        ack_dict['SIADDR'] = bytes(
+            [int(siaddr_parts[0]), int(siaddr_parts[1]), int(siaddr_parts[2]), int(siaddr_parts[3])])
+        #  modify mac address
+        mac1 = parsed_request['CHADDR1']
+        mac2 = parsed_request['CHADDR2']
+        ack_dict['CHADDR1'] = bytes([int(mac1[0:2], 16), int(mac1[2:4], 16), int(mac1[4:6], 16), int(mac1[6:8], 16)])
+        ack_dict['CHADDR2'] = bytes([int(mac2[0:2], 16), int(mac2[2:4], 16), int(mac2[4:6], 16), int(mac2[6:8], 16)])
+        ack_dict['option1'] = bytes([0, 0, 53, 5])
+        # at the end we should join the values of dhcp ACK dictionary
+        packet = b''.join(ack_dict.values())
+
+        return packet
+
     def message(self):
 
         sname = []
@@ -269,11 +323,11 @@ class DHCPServer(object):
 
     @staticmethod
     def ips(start, end):
-        start = struct.unpack('>I', socket.inet_aton(start))[0]
-        end = struct.unpack('>I', socket.inet_aton(end))[0]
-        return [socket.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
+        start = struct.unpack('>I', s.inet_aton(start))[0]
+        end = struct.unpack('>I', s.inet_aton(end))[0]
+        return [s.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
 
 
 if __name__ == '__main__':
-    dhcp_server = DHCPServer()
-    dhcp_server.server()
+    dhcp_server = DHCPServer('192.168.1.1')
+    dhcp_server.start()

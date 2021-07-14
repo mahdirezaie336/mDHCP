@@ -7,8 +7,9 @@ lock = Lock()
 def synchronized(f):
     def g(*args):
         lock.acquire()
-        f(*args)
+        res = f(*args)
         lock.release()
+        return res
     return g
 
 
@@ -28,5 +29,12 @@ class Queue:
     def pop(self):
         put = self.__sem.acquire(timeout=self.__sem_timeout)
         if put:
-            return self.__queue_list.pop(0)
+            p = self.__queue_list.pop(0)
+            return p
         raise TimeoutError('Semaphore timeout.')
+
+    def __str__(self):
+        return str(self.__queue_list)
+
+    def __repr__(self):
+        return str(self)

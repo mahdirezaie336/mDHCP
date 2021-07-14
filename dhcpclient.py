@@ -6,8 +6,8 @@ MAX_BYTES = 1024
 
 class DHCPClient:
 
-    server_port = 67
-    client_port = 68
+    server_port = 6700
+    client_port = 6800
 
     def __init__(self, mac_address):
         self.__mac_address = mac_address
