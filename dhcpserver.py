@@ -1,53 +1,100 @@
 import socket
-
-MAX_BYTES = 1024
-
-serverPort = 67
-clientPort = 68
+import json
+import struct
+from threading import Thread
+from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
+import binascii
 
 
 class DHCPServer(object):
 
     server_port = 67
     client_port = 68
+    MAX_BYTES = 1024
 
     def __init__(self):
+        # Loading configs from JSON file
+        with open('configs.json', 'r') as config_file:
+            configs = json.load(config_file)
+            self.__ip_pool = []
+            if configs['pool_mode'] == 'range':
+                pass
+
+        self.queues = {}
         pass
 
-    def server(self):
+    def start(self):
         print("DHCP server is starting...\n")
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        s.bind(('', serverPort))
-        dest = ('255.255.255.255', clientPort)
-
+        serverSocket = socket(AF_INET, SOCK_DGRAM)
+        serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        serverSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+        serverSocket.bind(('', DHCPServer.server_port))
         while 1:
             try:
                 print("Wait DHCP discovery.")
-                data, address = s.recvfrom(MAX_BYTES)
+                discovery_message, address = serverSocket.recvfrom(DHCPServer.MAX_BYTES)
                 print("Receive DHCP discovery.")
-                # print(data)
+                discovery_parsed = self.parseMessage(discovery_message)
+                xid = discovery_parsed['XID']
+                if xid not in self.queues:
+                    if discovery_parsed['option1'][2:4] == bytes([1]):
+                        self.queues[xid] = []
+                        Thread(target=self.client_thread, args=(serverSocket, discovery_message)).start()
+                else:
+                    self.queues[xid].append(discovery_message)
 
-                print("Send DHCP offer.")
-                data = DHCPServer.offer_get()
-                s.sendto(data, dest)
-                while 1:
-                    try:
-                        print("Wait DHCP request.")
-                        data, address = s.recvfrom(MAX_BYTES)
-                        print("Receive DHCP request.")
-                        print(data)
+            except:
+                pass
 
-                        print("Send DHCP pack.\n")
-                        data = DHCPServer.pack_get()
-                        s.sendto(data, dest)
-                        break
-                    except:
-                        raise
+    def client_thread(self, serverSocket, discovery_message):
+        destination = ('255.255.255.255', DHCPServer.client_port)
+        print("Send DHCP offer.")
+        parsed_discovery = self.parseMessage(discovery_message)
+        status, ip_address = self.check_mac(parsed_discovery)
+        if status == "blocked":
+            return
+
+        offer_message = self.DHCPOffer(parsed_discovery, ip_address)
+        serverSocket.sendto(offer_message, destination)
+        while 1:
+            try:
+                print("Wait DHCP request.")
+                request_message, address = serverSocket.recvfrom(self.buffer_size)
+                print("Receive DHCP request.")
+                parsed_request = self.parseMessage(request_message)
+
+                print("Send DHCP Ack.\n")
+                ack_message = self.DHCPOffer(parsed_request, ip_address)
+                serverSocket.sendto(ack_message, destination)
+                self.allocate_IP(ip_address, status)
+                self.ip_waiting.remove(ip_address)
             except:
                 raise
+
+    def parseMessage(self, response):
+        message = binascii.hexlify(response)
+        parsed_packet = {'OP': message[0:2],
+                         'HTYPE': message[2:4],
+                         'HLEN': message[4:6],
+                         'HOPS': message[6:8],
+                         'XID': message[8:16],
+                         'SECS': message[16:20],
+                         'FLAGS': message[20:24],
+                         'CIADDR': message[24:32],
+                         'YIADDR': message[32:40],
+                         'SIADDR': message[40:48],
+                         'GIADDR': message[48:56],
+                         'CHADDR1': message[56:64],
+                         'CHADDR2': message[64:72],
+                         'CHADDR3': message[72:80],
+                         'CHADDR4': message[80:88],
+                         'SName': message[88:216],
+                         'BName': message[216:472],
+                         'MCookie': message[472:480],
+                         'option1': message[480:488]}
+
+        return parsed_packet
 
     @staticmethod
     def offer_get():
@@ -106,6 +153,12 @@ class DHCPServer(object):
         package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + YIADDR + SIADDR + GIADDR + CHADDR1 + CHADDR2 + CHADDR3 + CHADDR4 + CHADDR5 + Magiccookie + DHCPOptions1 + DHCPOptions2 + DHCPOptions3 + DHCPOptions4 + DHCPOptions5
 
         return package
+
+    @staticmethod
+    def ips(start, end):
+        start = struct.unpack('>I', socket.inet_aton(start))[0]
+        end = struct.unpack('>I', socket.inet_aton(end))[0]
+        return [socket.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
 
 
 if __name__ == '__main__':
