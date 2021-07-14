@@ -7,7 +7,8 @@ serverPort = 67
 clientPort = 69
 mac_address = '14:cc:20:f3:8b:ea'
 
-def start(self):
+
+def start():
     print("DHCP client is starting...\n")
     dest = ('<broadcast>', serverPort)
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
