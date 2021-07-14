@@ -3,14 +3,14 @@ import random
 
 MAX_BYTES = 1024
 
-serverPort = 67
-clientPort = 69
-mac_address = '14:cc:20:f3:8b:ea'
-
 
 class DHCPClient:
 
-    def __init__(self):
+    server_port = 67
+    client_port = 68
+
+    def __init__(self, mac_address):
+        self.__mac_address = mac_address
         pass
 
     def start(self):

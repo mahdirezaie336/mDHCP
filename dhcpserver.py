@@ -8,6 +8,12 @@ clientPort = 68
 
 class DHCPServer(object):
 
+    server_port = 67
+    client_port = 68
+
+    def __init__(self):
+        pass
+
     def server(self):
         print("DHCP server is starting...\n")
 
@@ -43,8 +49,8 @@ class DHCPServer(object):
             except:
                 raise
 
+    @staticmethod
     def offer_get():
-
         OP = bytes([0x02])
         HTYPE = bytes([0x01])
         HLEN = bytes([0x06])
@@ -72,6 +78,7 @@ class DHCPServer(object):
 
         return package
 
+    @staticmethod
     def pack_get():
         OP = bytes([0x02])
         HTYPE = bytes([0x01])
