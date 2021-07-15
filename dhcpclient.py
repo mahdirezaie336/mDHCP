@@ -31,8 +31,8 @@ class DHCPClient:
                 self.refresh_xid()
                 try:
                     # Sending discovery
-                    print("Send DHCP discovery.")
                     data = self.make_discovery_message()
+                    print("Sent DHCP discovery.")
                     sock.sendto(data, destination)
 
                     # Setting the socket timeout
@@ -42,7 +42,7 @@ class DHCPClient:
                     data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
                     print("Receive DHCP offer.")
                 except timeout:
-                    new_time = self.__initial_interval * 2 * random.random()
+                    new_time = self.__initial_interval * 2 * random.random() + self.__initial_interval
                     self.__initial_interval = min(new_time, self.__backoff_cutoff)
                     print('DHCP offer receiving timeout. Resending with initial interval',
                           self.__initial_interval, ' seconds ...')
@@ -74,7 +74,7 @@ class DHCPClient:
         message.append(b'\x35\x02\x01')
         return b''.join(message)
 
-    def make_request_message(self, your_ip_address, server_ip_address):
+    def make_request_message(self, your_ip_address: bytes, server_ip_address: bytes):
         message = self.create_messge()
 
         # Changing YIADDR and SIADDR
