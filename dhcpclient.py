@@ -67,7 +67,8 @@ class DHCPClient:
                         parsed_ack = self.parse_message(data)
                         print("Receive DHCP ack.\n")
                         print('IP Address:', ip_to_str(parsed_ack['YIADDR']), '\n')
-                        self.__lease_time = bin_to_int(parsed_ack['OPTIONS'][5:9])
+                        self.__lease_time = parsed_ack['OPTIONS'][5]
+                        print(parsed_ack['OPTIONS'][5])
                         time.sleep(self.__lease_time / 2)
                 except timeout:
                     print('DHCP acknowledgement receive timeout. Resending discovery ...')
@@ -77,6 +78,7 @@ class DHCPClient:
         while True:
             data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
             parsed = self.parse_message(data)
+            # print(parsed['OPTIONS'][2], msg_type, parsed['OPTIONS'][2] == msg_type)
             if parsed['XID'] == self.__xid and parsed['OPTIONS'][2] == msg_type:
                 return data, address
 

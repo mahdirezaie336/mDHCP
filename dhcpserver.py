@@ -95,6 +95,7 @@ class DHCPServer(object):
                 print(xid, ':', "Wait DHCP request.")
                 try:
                     parsed_message = self.__queues[xid].get(timeout=self.__lease_time)
+                    # print(parsed_message['SIADDR'] == self.__address)
                     if parsed_message['SIADDR'] != self.__address:
                         print('The client chose another DHCP with address', ip_to_str(parsed_message['SIADDR']))
                         break
@@ -156,10 +157,10 @@ class DHCPServer(object):
 
         # Adding options
         options = []
-        options.append(b'\x35\x01\x02')                                                 # DHCP Message Type
+        options.append(b'\x35\x01\x05')                                                 # DHCP Message Type
+        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
         options.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
         options.append(b'\x03\x04' + self.__address)                                    # Router Address
-        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
         options.append(b'\x36\x04' + self.__address)                                    # DHCP Address
 
         n = len(self.__dns_servers)

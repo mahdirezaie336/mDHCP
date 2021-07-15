@@ -24,4 +24,4 @@ def mac_to_bytes(mac_address: str) -> bytes:
 
 
 def bin_to_int(number: bytes):
-    return int(binascii.hexlify(number))
+    return int(binascii.hexlify(number), 16)
