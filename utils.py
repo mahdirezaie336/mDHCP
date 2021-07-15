@@ -22,3 +22,6 @@ def mac_to_bytes(mac_address: str) -> bytes:
     parts = mac_address.split(':')
     return b''.join([bytes([int(i, 16)]) for i in parts])
 
+
+def bin_to_int(number: bytes):
+    return int(binascii.hexlify(number))

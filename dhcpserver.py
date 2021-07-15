@@ -132,9 +132,9 @@ class DHCPServer(object):
         # Adding options
         options = []
         options.append(b'\x35\x01\x02')                                                 # DHCP Message Type
+        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
         options.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
         options.append(b'\x03\x04' + self.__address)                                    # Router Address
-        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
         options.append(b'\x36\x04' + self.__address)                                    # DHCP Address
 
         n = len(self.__dns_servers)
