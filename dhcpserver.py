@@ -17,6 +17,17 @@ class DHCPServer(object):
     __queues: dict[bytes, Queue]
 
     def __init__(self, ip_address: str, subnet_mask: str, dns_servers=None):
+        self.__queues = {}
+        self.__address = DHCPServer.convert_ip_to_bytes(ip_address)
+        self.__subnet = DHCPServer.convert_ip_to_bytes(subnet_mask)
+        self.__dns_servers = []
+
+        # Generating DNS servers
+        if dns_servers is None:
+            dns_servers = ['8.8.8.8', '1.1.1.1']
+        for i in dns_servers:
+            self.__dns_servers.append(DHCPServer.convert_ip_to_bytes(i))
+
         # Loading configs from JSON file
         with open('configs.json', 'r') as config_file:
             configs = json.load(config_file)
@@ -33,16 +44,6 @@ class DHCPServer(object):
             self.__lease_time = configs['lease_time']
             self.__reservation_list = configs['reservation_list']
             self.__black_list = configs['black_list']
-
-        self.__queues = {}
-        self.__address = DHCPServer.convert_ip_to_bytes(ip_address)
-        self.__subnet = DHCPServer.convert_ip_to_bytes(subnet_mask)
-        self.__dns_servers = []
-
-        if dns_servers is None:
-            dns_servers = ['8.8.8.8', '1.1.1.1']
-        for i in dns_servers:
-            self.__dns_servers.append(DHCPServer.convert_ip_to_bytes(i))
 
     def start(self):
         print("DHCP server is starting...\n")
@@ -89,7 +90,7 @@ class DHCPServer(object):
 
             # Sending Offer
             print(xid, ':', "Send DHCP offer.")
-            offer_message = self.make_offer_message(xid)
+            ip, offer_message = self.make_offer_message(xid)
             sender_socket.sendto(offer_message, destination)
 
             while True:
@@ -110,7 +111,7 @@ class DHCPServer(object):
 
     def make_offer_message(self, xid: bytes):
         # Getting an ip address from ip pool
-        ip_address = self.__ip_pool.pop()
+        ip_address = self.get_an_ip()
 
         # Generating message
         message = self.create_messge()
@@ -128,11 +129,14 @@ class DHCPServer(object):
         n = len(self.__dns_servers)
         message.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
 
-        return b''.join(message)
+        return ip_address, b''.join(message)
 
     def make_ack_message(self, parsed_request, yiaddr):
 
         return 'packet'
+
+    def get_an_ip(self):
+        return self.__ip_pool.pop()
 
     def create_messge(self) -> list[bytes]:
         """ Creates body of DHCP message without options. Options
@@ -190,6 +194,11 @@ class DHCPServer(object):
     def convert_ip_to_bytes(ip_address: str) -> bytes:
         parts = ip_address.split('.')
         return b''.join([bytes([int(i)]) for i in parts])
+
+    @staticmethod
+    def convert_mac_address_to_bytes(mac_address: str) -> bytes:
+        parts = mac_address.split(':')
+        return b''.join([bytes([int(i, 16)]) for i in parts])
 
 
 if __name__ == '__main__':
