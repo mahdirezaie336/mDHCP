@@ -67,8 +67,9 @@ class DHCPClient:
                         parsed_ack = self.parse_message(data)
                         print("Receive DHCP ack.\n")
                         print('IP Address:', ip_to_str(parsed_ack['YIADDR']), '\n')
+
+                        # Lease time Handling
                         self.__lease_time = parsed_ack['OPTIONS'][5]
-                        print(parsed_ack['OPTIONS'][5])
                         time.sleep(self.__lease_time / 2)
                 except timeout:
                     print('DHCP acknowledgement receive timeout. Resending discovery ...')

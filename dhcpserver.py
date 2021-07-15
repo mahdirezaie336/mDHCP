@@ -1,10 +1,11 @@
+import random
 import socket
 import json
-import time
 from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
 from queue import Queue, Empty
 from utils import *
+from datetime import datetime, timedelta
 
 
 class DHCPServer(object):
@@ -53,19 +54,16 @@ class DHCPServer(object):
         server_socket.bind(('', DHCPServer.server_port))
 
         while True:
-            try:
-                message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
-                parsed_message = self.parse_message(message)
-                xid = parsed_message['XID']
-                if xid not in self.__queues:
-                    if parsed_message['OPTIONS'][2:3] == b'\x01':
-                        self.__queues[xid] = Queue()
-                        self.__queues[xid].put(parsed_message)
-                        Thread(target=self.client_thread, args=(xid,)).start()
-                else:
-                    self.__queues[xid].put(self.parse_message(message))
-            except:
-                pass
+            message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
+            parsed_message = self.parse_message(message)
+            xid = parsed_message['XID']
+            if xid not in self.__queues:
+                if parsed_message['OPTIONS'][2:3] == b'\x01':
+                    self.__queues[xid] = Queue()
+                    self.__queues[xid].put(parsed_message)
+                    Thread(target=self.client_thread, args=(xid,)).start()
+            else:
+                self.__queues[xid].put(self.parse_message(message))
 
     def client_thread(self, xid: bytes):
         # Open Sender Socket
@@ -109,8 +107,10 @@ class DHCPServer(object):
                 ack_message = self.make_ack_message(parsed_message, ip)
                 sender_socket.sendto(ack_message, destination)
 
-                # Add address to ip table
-                self.__ip_address_table[mac_address] = ip
+                # Add address and other info to ip table
+                computer_name = 'DESKTOP-' + str(random.randint(0, 2571003))
+                table_row = ip, computer_name, datetime.now() + timedelta(seconds=self.__lease_time)
+                self.__ip_address_table[mac_address] = table_row
 
             # After lease timed out
             self.__ip_pool.add(ip)
@@ -169,9 +169,9 @@ class DHCPServer(object):
 
         return b''.join(message.values())
 
-    def get_an_ip(self, mac_address: bytes):
+    def get_an_ip(self, mac_address: bytes) -> bytes:
         if mac_address in self.__ip_address_table:
-            return self.__ip_address_table[mac_address]
+            return self.__ip_address_table[mac_address][0]
         return self.__ip_pool.pop()
 
     def create_messge(self) -> dict[str: bytes]:
