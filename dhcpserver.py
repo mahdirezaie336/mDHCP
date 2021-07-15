@@ -1,8 +1,7 @@
 import socket
 import json
 import struct
-from datetime import datetime
-from threading import Thread, Lock
+from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
 import socket as s
 import binascii
@@ -47,6 +46,7 @@ class DHCPServer(object):
 
     def start(self):
         print("DHCP server is starting...\n")
+        print("Wait DHCP discovery.")
         server_socket = socket(AF_INET, SOCK_DGRAM)
         server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         server_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
@@ -54,13 +54,12 @@ class DHCPServer(object):
 
         while True:
             try:
-                print("Wait DHCP discovery.")
                 message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
-                print("Receive DHCP discovery.")
+                print("Received DHCP message.")
                 parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
                 if xid not in self.__queues:
-                    if parsed_message['option1'][2:4] == b'01':
+                    if parsed_message['option1'][4:6] == b'01':
                         self.__queues[xid] = Queue()
                         self.__queues[xid].add(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
@@ -225,5 +224,5 @@ class DHCPServer(object):
 
 
 if __name__ == '__main__':
-    dhcp_server = DHCPServer('192.168.1.1')
+    dhcp_server = DHCPServer('192.168.1.1', '255.255.255.0')
     dhcp_server.start()
