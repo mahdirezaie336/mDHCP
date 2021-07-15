@@ -2,6 +2,7 @@ import binascii
 import time
 from socket import AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST, socket, timeout
 import random
+from utils import *
 
 
 class DHCPClient:
@@ -10,7 +11,7 @@ class DHCPClient:
     MAX_BYTES = 1024
 
     def __init__(self, mac_address: str):
-        self.__mac_address = mac_address
+        self.__mac_address = mac_to_bytes(mac_address)
         self.__initial_interval = 10
         self.__backoff_cutoff = 120
         self.__ack_timeout = 20
@@ -72,11 +73,11 @@ class DHCPClient:
     def make_discovery_message(self):
         message = self.create_messge()
         # Adding options
-        message.append(b'\x35\x02\x01')
+        message.append(b'\x35\x01\x01')
         return b''.join(message)
 
     def make_request_message(self, your_ip_address: bytes, server_ip_address: bytes):
-        print()
+        print(ip_to_str(your_ip_address))
         message = self.create_messge()
 
         # Changing YIADDR and SIADDR
@@ -84,7 +85,7 @@ class DHCPClient:
         message[9] = server_ip_address
 
         # Appending Options
-        message.append(b'\x35\x02\x03')
+        message.append(b'\x35\x01\x03')
         message.append(b'\x34\x04' + your_ip_address)
         message.append(b'\x36\x04' + server_ip_address)
         return b''.join(message)
@@ -107,7 +108,7 @@ class DHCPClient:
                    b'\x00\x00\x00\x00',                 # SIADDR
                    b'\x00\x00\x00\x00',                 # GIADDR
                    # CHADDR1 CHADDR2
-                   b''.join([bytes([int(i, 16)]) for i in (self.__mac_address + ':00:00').split(':')]),
+                   self.__mac_address + b'\x00\x00',
                    b'\x00\x00\x00\x00',                 # CHADDR3
                    b'\x00\x00\x00\x00',                 # CHADDR4
                    b'\x00' * 192,                       # SNAME and BNAME

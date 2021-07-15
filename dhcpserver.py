@@ -2,7 +2,6 @@ import socket
 import json
 from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
-import binascii
 from queue import Queue
 from utils import *
 
@@ -57,8 +56,9 @@ class DHCPServer(object):
                 print("Received DHCP message.")
                 parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
+                print(parsed_message)
                 if xid not in self.__queues:
-                    if parsed_message['option1'][4:6] == b'01':
+                    if parsed_message['option1'][2] == b'\x01':
                         self.__queues[xid] = Queue()
                         self.__queues[xid].add(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
@@ -93,7 +93,7 @@ class DHCPServer(object):
 
             while True:
                 # Getting request from queue
-                print("Wait DHCP request.")
+                print(xid, ':', "Wait DHCP request.")
                 try:
                     parsed_message = self.__queues[xid].pop(self.__lease_time)
                 except TimeoutError as e:
@@ -116,22 +116,24 @@ class DHCPServer(object):
 
         # Generating message
         message = self.create_messge()
-        message[4] = xid
-        message[8] = ip_address
-        message[9] = self.__address
-        message[11] = chaddr12
+        message['XID'] = xid
+        message['YIADDR'] = ip_address
+        message['SIADDR'] = self.__address
+        message['CHADDR12'] = chaddr12
 
         # Adding options
-        message.append(b'\x35\x01\x02')                                                 # DHCP Message Type
-        message.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
-        message.append(b'\x03\x04' + self.__address)                                    # Router Address
-        message.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
-        message.append(b'\x36\x04' + self.__address)                                    # DHCP Address
+        options = []
+        options.append(b'\x35\x01\x02')                                                 # DHCP Message Type
+        options.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
+        options.append(b'\x03\x04' + self.__address)                                    # Router Address
+        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
+        options.append(b'\x36\x04' + self.__address)                                    # DHCP Address
 
         n = len(self.__dns_servers)
-        message.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+        options.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+        message['OPTIONS'] = b''.join(options)
 
-        return ip_address, b''.join(message)
+        return ip_address, b''.join(message.values())
 
     def make_ack_message(self, request_message: dict[str: bytes], client_ip: bytes):
         xid = request_message['XID']
@@ -139,47 +141,48 @@ class DHCPServer(object):
 
         # Generating message
         message = self.create_messge()
-        message[4] = xid
-        message[8] = client_ip
-        message[9] = self.__address
-        message[11] = chaddr12
+        message['XID'] = xid
+        message['YIADDR'] = client_ip
+        message['SIADDR'] = self.__address
+        message['CHADDR12'] = chaddr12
 
         # Adding options
-        message.append(b'\x35\x01\x05')                                                 # DHCP Message Type
-        message.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
-        message.append(b'\x03\x04' + self.__address)                                    # Router Address
-        message.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
-        message.append(b'\x36\x04' + self.__address)                                    # DHCP Address
+        options = []
+        options.append(b'\x35\x01\x02')                                                 # DHCP Message Type
+        options.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
+        options.append(b'\x03\x04' + self.__address)                                    # Router Address
+        options.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
+        options.append(b'\x36\x04' + self.__address)                                    # DHCP Address
 
         n = len(self.__dns_servers)
-        message.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+        options.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+        message['OPTIONS'] = b''.join(options)
 
-        return b''.join(message)
+        return b''.join(message.values())
 
     def get_an_ip(self):
         return self.__ip_pool.pop()
 
-    def create_messge(self) -> list[bytes]:
+    def create_messge(self) -> dict[str: bytes]:
         """ Creates body of DHCP message without options. Options
             are created in offer or acknowledgement methods. """
-        message = [b'\x02',                     # OP
-                   b'\x01',                     # HTYPE
-                   b'\x06',                     # HLEN
-                   b'\x00',                     # HOPS
-                   b'\x00\x00\x00\x00',         # XID
-                   b'\x00\x00',                 # SECS
-                   b'\x00\x00',                 # FLAGS
-                   b'\x00\x00\x00\x00',         # CIADDR
-                   b'\x00\x00\x00\x00',         # YIADDR
-                   b'\x00\x00\x00\x00',         # SIADDR
-                   b'\x00\x00\x00\x00',         # GIADDR
-                   # CHADDR1 CHADDR2
-                   b'',
-                   b'\x00\x00\x00\x00',         # CHADDR3
-                   b'\x00\x00\x00\x00',         # CHADDR4
-                   b'\x00' * 192,               # SNAME and BNAME
-                   b'\x63\x82\x53\x63',         # Magic Cookie
-                   ]
+        message = {'OP': b'\x02',                           # OP
+                   'HTYPE': b'\x01',                        # HTYPE
+                   'HLEN': b'\x06',                         # HLEN
+                   'HOPS': b'\x00',                         # HOPS
+                   'XID': b'\x00\x00\x00\x00',              # XID
+                   'SECS': b'\x00\x00',                     # SECS
+                   'FLAGS': b'\x00\x00',                    # FLAGS
+                   'CIADDR': b'\x00\x00\x00\x00',           # CIADDR
+                   'YIADDR': b'\x00\x00\x00\x00',           # YIADDR
+                   'SIADDR': b'\x00\x00\x00\x00',           # SIADDR
+                   'GIADDR': b'\x00\x00\x00\x00',           # GIADDR
+                   'CHADDR12': b'\x00' * 8,
+                   'CHADDR3': b'\x00\x00\x00\x00',          # CHADDR3
+                   'CHADDR4': b'\x00\x00\x00\x00',          # CHADDR4
+                   'SNAME_BNAME': b'\x00' * 192,            # SNAME and BNAME
+                   'MagicCookie': b'\x63\x82\x53\x63',      # Magic Cookie
+                    }
         return message
 
     def parse_message(self, response):
