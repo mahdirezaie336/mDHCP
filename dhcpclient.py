@@ -32,7 +32,7 @@ class DHCPClient:
                 try:
                     # Sending discovery
                     print("Send DHCP discovery.")
-                    data = self.make_new_discovery_message()
+                    data = self.make_discovery_message()
                     sock.sendto(data, destination)
 
                     # Setting the socket timeout
@@ -53,7 +53,7 @@ class DHCPClient:
                     while True:
                         # Sending request
                         print("Send DHCP request.")
-                        data = self.make_new_request()
+                        data = self.make_request_message(data[32:40], data[40:48])
                         sock.sendto(data, destination)
 
                         # Setting acknowledgement timeout
@@ -68,18 +68,31 @@ class DHCPClient:
                     print('DHCP acknowledgement receive timeout. Resending discovery ...')
                     continue
 
-    def make_new_request(self):
+    def make_discovery_message(self):
+        message = self.create_messge()
+        # Adding options
+        message.append(b'\x35\x02\x01')
+        return b''.join(message)
 
-        return b''
+    def make_request_message(self, your_ip_address, server_ip_address):
+        message = self.create_messge()
 
-    def make_new_discovery_message(self):
+        # Changing YIADDR and SIADDR
+        message[8] = your_ip_address
+        message[9] = server_ip_address
 
-        return b''
+        # Appending Options
+        message.append(b'\x35\x02\x03')
+        message.append(b'\x34\x04' + your_ip_address)
+        message.append(b'\x36\x04' + server_ip_address)
+        return b''.join(message)
 
     def refresh_xid(self):
         self.__xid = b''.join([bytes([random.randint(0, 255)]) for i in range(4)])
 
     def create_messge(self) -> list[bytes]:
+        """ Creates body of DHCP message without options. Options
+            are created in request or discovery methods. """
         message = [b'\x01',                             # OP
                    b'\x01',                             # HTYPE
                    b'\x06',                             # HLEN
@@ -96,8 +109,7 @@ class DHCPClient:
                    b'\x00\x00\x00\x00',                 # CHADDR3
                    b'\x00\x00\x00\x00',                 # CHADDR4
                    b'\x00' * 192,                       # SNAME and BNAME
-                   b'\x63\x82\x53\x63'                  # Magic Cookie
-                   b'\x35\x02\x01'                      # OPTION1
+                   b'\x63\x82\x53\x63',                 # Magic Cookie
                    ]
         return message
 
@@ -121,7 +133,7 @@ class DHCPClient:
                          'SName': message[88:216],
                          'BName': message[216:472],
                          'MCookie': message[472:480],
-                         'option1': message[480:488]}
+                         'options': message[480:]}
         return parsed_packet
 
 
