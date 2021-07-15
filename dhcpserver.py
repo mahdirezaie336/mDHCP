@@ -90,7 +90,7 @@ class DHCPServer(object):
 
             # Sending Offer
             print(xid, ':', "Send DHCP offer.")
-            ip, offer_message = self.make_offer_message(xid)
+            ip, offer_message = self.make_offer_message(parsed_message)
             sender_socket.sendto(offer_message, destination)
 
             while True:
@@ -103,13 +103,16 @@ class DHCPServer(object):
                     break
                 print(xid, ':', "Receive DHCP request.")
                 print(xid, ':', "Send DHCP Ack.\n")
-                ack_message = self.make_ack_message(parsed_message, ip_address)
+                ack_message = self.make_ack_message(parsed_message, ip)
                 sender_socket.sendto(ack_message, destination)
 
     def mac_address_is_allowed(self, mac_address: bytes):
         return mac_address not in self.__black_list
 
-    def make_offer_message(self, xid: bytes):
+    def make_offer_message(self, request_message: dict[str: bytes]):
+        xid = request_message['XID']
+        chaddr12 = request_message['CHADDR12']
+
         # Getting an ip address from ip pool
         ip_address = self.get_an_ip()
 
@@ -118,9 +121,10 @@ class DHCPServer(object):
         message[4] = xid
         message[8] = ip_address
         message[9] = self.__address
+        message[11] = chaddr12
 
         # Adding options
-        message.append(b'\x35\x02\x02')                                                 # DHCP Message Type
+        message.append(b'\x35\x01\x02')                                                 # DHCP Message Type
         message.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
         message.append(b'\x03\x04' + self.__address)                                    # Router Address
         message.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
@@ -131,9 +135,28 @@ class DHCPServer(object):
 
         return ip_address, b''.join(message)
 
-    def make_ack_message(self, parsed_request, yiaddr):
+    def make_ack_message(self, request_message: dict[str: bytes], client_ip: bytes):
+        xid = request_message['XID']
+        chaddr12 = request_message['CHADDR12']
 
-        return 'packet'
+        # Generating message
+        message = self.create_messge()
+        message[4] = xid
+        message[8] = client_ip
+        message[9] = self.__address
+        message[11] = chaddr12
+
+        # Adding options
+        message.append(b'\x35\x01\x05')                                                 # DHCP Message Type
+        message.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
+        message.append(b'\x03\x04' + self.__address)                                    # Router Address
+        message.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
+        message.append(b'\x36\x04' + self.__address)                                    # DHCP Address
+
+        n = len(self.__dns_servers)
+        message.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+
+        return b''.join(message)
 
     def get_an_ip(self):
         return self.__ip_pool.pop()
@@ -153,7 +176,7 @@ class DHCPServer(object):
                    b'\x00\x00\x00\x00',         # SIADDR
                    b'\x00\x00\x00\x00',         # GIADDR
                    # CHADDR1 CHADDR2
-                   b''.join([binascii.unhexlify(i) for i in (self.__mac_address + ':00:00').split(':')]),
+                   b'',
                    b'\x00\x00\x00\x00',         # CHADDR3
                    b'\x00\x00\x00\x00',         # CHADDR4
                    b'\x00' * 192,               # SNAME and BNAME

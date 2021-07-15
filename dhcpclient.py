@@ -106,7 +106,7 @@ class DHCPClient:
                    b'\x00\x00\x00\x00',                 # SIADDR
                    b'\x00\x00\x00\x00',                 # GIADDR
                    # CHADDR1 CHADDR2
-                   b''.join([binascii.unhexlify(i) for i in (self.__mac_address + ':00:00').split(':')]),
+                   b''.join([bytes([int(i, 16)]) for i in (self.__mac_address + ':00:00').split(':')]),
                    b'\x00\x00\x00\x00',                 # CHADDR3
                    b'\x00\x00\x00\x00',                 # CHADDR4
                    b'\x00' * 192,                       # SNAME and BNAME
