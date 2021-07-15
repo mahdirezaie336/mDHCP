@@ -9,8 +9,8 @@ class DHCPClient:
     client_port = 6800
     MAX_BYTES = 1024
 
-    def __init__(self, mac_address):
-        self.__mac_address = mac_address
+    def __init__(self, mac_address: str):
+        self.__mac_address = mac_address + ':00:00'
         self.__initial_interval = 10
         self.__backoff_cutoff = 120
         self.__ack_timeout = 20
@@ -105,8 +105,7 @@ class DHCPClient:
         YIADDR = bytes([0x00, 0x00, 0x00, 0x00])
         SIADDR = bytes([0x00, 0x00, 0x00, 0x00])
         GIADDR = bytes([0x00, 0x00, 0x00, 0x00])
-        CHADDR1 = bytes([0x00, 0x05, 0x3C, 0x04])
-        CHADDR2 = bytes([0x8D, 0x59, 0x00, 0x00])
+        CHADDR1_2 = b''.join([i.encode() for i in self.__mac_address.split(':')])
         CHADDR3 = bytes([0x00, 0x00, 0x00, 0x00])
         CHADDR4 = bytes([0x00, 0x00, 0x00, 0x00])
         CHADDR5 = bytes(192)
@@ -114,19 +113,15 @@ class DHCPClient:
         DHCPOptions1 = bytes([53, 1, 1])
         DHCPOptions2 = bytes([50, 4, 0xC0, 0xA8, 0x01, 0x64])
 
-        package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + YIADDR + SIADDR + GIADDR + CHADDR1 + \
-                  CHADDR2 + CHADDR3 + CHADDR4 + CHADDR5 + Magiccookie + DHCPOptions1 + DHCPOptions2
+        package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + YIADDR + SIADDR + GIADDR + CHADDR1_2 + \
+                    CHADDR3 + CHADDR4 + CHADDR5 + Magiccookie + DHCPOptions1 + DHCPOptions2
 
         return package
 
     def make_new_xid(self) -> bytes:
-        res = b''
-        res += bytes([random.randint(0, 255)])
-        res += bytes([random.randint(0, 255)])
-        res += bytes([random.randint(0, 255)])
-        res += bytes([random.randint(0, 255)])
-        return res
+        return b''.join([bytes([random.randint(0, 255)]) for i in range(4)])
 
 
 if __name__ == '__main__':
-    print(make_new_xid())
+    client = DHCPClient('14:cc:20:f3:8b:ea')
+    client.start()
