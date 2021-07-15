@@ -206,22 +206,6 @@ class DHCPServer(object):
 
         return parsed_packet
 
-    @staticmethod
-    def ips(start, end):
-        start = struct.unpack('>I', s.inet_aton(start))[0]
-        end = struct.unpack('>I', s.inet_aton(end))[0]
-        return [s.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
-
-    @staticmethod
-    def convert_ip_to_bytes(ip_address: str) -> bytes:
-        parts = ip_address.split('.')
-        return b''.join([bytes([int(i)]) for i in parts])
-
-    @staticmethod
-    def convert_mac_to_bytes(mac_address: str) -> bytes:
-        parts = mac_address.split(':')
-        return b''.join([bytes([int(i, 16)]) for i in parts])
-
 
 if __name__ == '__main__':
     dhcp_server = DHCPServer('192.168.1.1', '255.255.255.0')

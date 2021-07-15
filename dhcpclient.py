@@ -76,6 +76,7 @@ class DHCPClient:
         return b''.join(message)
 
     def make_request_message(self, your_ip_address: bytes, server_ip_address: bytes):
+        print()
         message = self.create_messge()
 
         # Changing YIADDR and SIADDR
