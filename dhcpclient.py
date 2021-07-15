@@ -50,12 +50,13 @@ class DHCPClient:
                           self.__initial_interval, ' seconds ...')
                     continue
 
+                parsed_offer = self.parse_message(data)
                 # DHCP acknowledgement repeater
                 try:
                     while True:
                         # Sending request
                         print("Send DHCP request.")
-                        data = self.make_request_message(data[32:40], data[40:48])
+                        data = self.make_request_message(parsed_offer['YIADDR'], parsed_offer['SIADDR'])
                         sock.sendto(data, destination)
 
                         # Setting acknowledgement timeout
@@ -116,27 +117,26 @@ class DHCPClient:
                    ]
         return message
 
-    def parse_message(self, response):
-        message = binascii.hexlify(response)
-        parsed_packet = {'OP': message[0:2],
-                         'HTYPE': message[2:4],
-                         'HLEN': message[4:6],
-                         'HOPS': message[6:8],
-                         'XID': message[8:16],
-                         'SECS': message[16:20],
-                         'FLAGS': message[20:24],
-                         'CIADDR': message[24:32],
-                         'YIADDR': message[32:40],
-                         'SIADDR': message[40:48],
-                         'GIADDR': message[48:56],
-                         'CHADDR1': message[56:64],
-                         'CHADDR2': message[64:72],
-                         'CHADDR3': message[72:80],
-                         'CHADDR4': message[80:88],
-                         'SNAME': message[88:216],
-                         'BNAME': message[216:472],
-                         'MCOOKIE': message[472:480],
-                         'OPTIONS': message[480:]}
+    def parse_message(self, message):
+        # message = binascii.hexlify(response)
+        parsed_packet = {'OP': message[0:1],
+                         'HTYPE': message[1:2],
+                         'HLEN': message[2:3],
+                         'HOPS': message[3:4],
+                         'XID': message[4:8],
+                         'SECS': message[8:10],
+                         'FLAGS': message[10:12],
+                         'CIADDR': message[12:16],
+                         'YIADDR': message[16:20],
+                         'SIADDR': message[20:24],
+                         'GIADDR': message[24:28],
+                         'CHADDR12': message[28:36],
+                         'CHADDR3': message[36:40],
+                         'CHADDR4': message[40:44],
+                         'SNAME': message[44:108],
+                         'BNAME': message[108:236],
+                         'MCOOKIE': message[236:240],
+                         'OPTIONS': message[240:]}
         return parsed_packet
 
 
