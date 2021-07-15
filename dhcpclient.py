@@ -40,7 +40,7 @@ class DHCPClient:
                     sock.settimeout(self.__initial_interval)
 
                     # Receiving the offer
-                    data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
+                    data, address = self.check_and_receive(sock, 2)
                     print("Receive DHCP offer.")
                 except timeout:
                     # Formula of initial interval
@@ -63,7 +63,7 @@ class DHCPClient:
                         sock.settimeout(self.__ack_timeout)
 
                         # Receiving acknowledgement
-                        data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
+                        data, address = self.check_and_receive(sock, 5)
                         parsed_ack = self.parse_message(data)
                         print("Receive DHCP ack.\n")
                         print('IP Address:', ip_to_str(parsed_ack['YIADDR']), '\n')
@@ -71,6 +71,13 @@ class DHCPClient:
                 except timeout:
                     print('DHCP acknowledgement receive timeout. Resending discovery ...')
                     continue
+
+    def check_and_receive(self, sock: socket, msg_type: int):
+        while True:
+            data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
+            parsed = self.parse_message(data)
+            if parsed['XID'] == self.__xid and parsed['OPTIONS'][2] == msg_type:
+                return data, address
 
     def make_discovery_message(self):
         message = self.create_messge()

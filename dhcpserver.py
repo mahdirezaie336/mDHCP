@@ -55,10 +55,8 @@ class DHCPServer(object):
         while True:
             try:
                 message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
-                # print("Received DHCP message.")
                 parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
-                # print(parsed_message, parsed_message['OPTIONS'][2])
                 if xid not in self.__queues:
                     if parsed_message['OPTIONS'][2:3] == b'\x01':
                         self.__queues[xid] = Queue()
@@ -97,6 +95,9 @@ class DHCPServer(object):
                 print(xid, ':', "Wait DHCP request.")
                 try:
                     parsed_message = self.__queues[xid].get(timeout=self.__lease_time)
+                    if parsed_message['SIADDR'] != self.__address:
+                        print('The client chose another DHCP with address', ip_to_str(parsed_message['SIADDR']))
+                        break
                 except Empty as e:
                     print(xid, ':', 'Lease timed out.')
                     break
@@ -113,9 +114,6 @@ class DHCPServer(object):
             # After lease timed out
             self.__ip_pool.add(ip)
             del self.__ip_address_table[mac_address]
-
-    def mac_address_is_allowed(self, mac_address: bytes):
-        return mac_address not in self.__black_list
 
     def make_offer_message(self, request_message: dict[str: bytes]):
         xid = request_message['XID']
