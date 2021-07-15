@@ -13,14 +13,12 @@ def ips(start, end):
     return [s.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
 
 
-def convert_ip_to_bytes(ip_address: str) -> bytes:
+def ip_to_bytes(ip_address: str) -> bytes:
     parts = ip_address.split('.')
     return b''.join([bytes([int(i)]) for i in parts])
 
 
-def convert_mac_to_bytes(mac_address: str) -> bytes:
+def mac_to_bytes(mac_address: str) -> bytes:
     parts = mac_address.split(':')
     return b''.join([bytes([int(i, 16)]) for i in parts])
 
-
-print(ip_to_str(b'\xf1\xf2\x55\x13'))

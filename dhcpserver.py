@@ -1,11 +1,10 @@
 import socket
 import json
-import struct
 from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
-import socket as s
 import binascii
 from queue import Queue
+from utils import *
 
 
 class DHCPServer(object):
@@ -17,15 +16,15 @@ class DHCPServer(object):
 
     def __init__(self, ip_address: str, subnet_mask: str, dns_servers=None):
         self.__queues = {}
-        self.__address = DHCPServer.convert_ip_to_bytes(ip_address)
-        self.__subnet = DHCPServer.convert_ip_to_bytes(subnet_mask)
+        self.__address = ip_to_bytes(ip_address)
+        self.__subnet = ip_to_bytes(subnet_mask)
         self.__dns_servers = []
 
         # Generating DNS servers
         if dns_servers is None:
             dns_servers = ['8.8.8.8', '1.1.1.1']
         for i in dns_servers:
-            self.__dns_servers.append(DHCPServer.convert_ip_to_bytes(i))
+            self.__dns_servers.append(ip_to_bytes(i))
 
         # Loading configs from JSON file
         with open('configs.json', 'r') as config_file:
@@ -34,15 +33,15 @@ class DHCPServer(object):
             # Setting IP Pool
             self.__ip_pool = set()
             if configs['pool_mode'] == 'range':
-                ip_range = DHCPServer.ips(configs['range']['from'], configs['range']['to'])
+                ip_range = ips(configs['range']['from'], configs['range']['to'])
                 for i in ip_range:
-                    self.__ip_pool.add(DHCPServer.convert_ip_to_bytes(i))
+                    self.__ip_pool.add(ip_to_bytes(i))
             elif configs['pool_mode'] == 'subnet':
                 pass
 
             self.__lease_time = configs['lease_time']
             self.__reservation_list = configs['reservation_list']
-            self.__black_list = {DHCPServer.convert_mac_to_bytes(i) for i in configs['black_list']}
+            self.__black_list = {mac_to_bytes(i) for i in configs['black_list']}
 
     def start(self):
         print("DHCP server is starting...\n")
