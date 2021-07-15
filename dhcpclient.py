@@ -42,6 +42,7 @@ class DHCPClient:
                     data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
                     print("Receive DHCP offer.")
                 except timeout:
+                    # Formula of initial interval
                     new_time = self.__initial_interval * 2 * random.random() + self.__initial_interval
                     self.__initial_interval = min(new_time, self.__backoff_cutoff)
                     print('DHCP offer receiving timeout. Resending with initial interval',
@@ -130,10 +131,10 @@ class DHCPClient:
                          'CHADDR2': message[64:72],
                          'CHADDR3': message[72:80],
                          'CHADDR4': message[80:88],
-                         'SName': message[88:216],
-                         'BName': message[216:472],
-                         'MCookie': message[472:480],
-                         'options': message[480:]}
+                         'SNAME': message[88:216],
+                         'BNAME': message[216:472],
+                         'MCOOKIE': message[472:480],
+                         'OPTIONS': message[480:]}
         return parsed_packet
 
 
