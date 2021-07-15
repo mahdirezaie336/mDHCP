@@ -1,8 +1,9 @@
 import socket
 import json
+import time
 from threading import Thread
 from socket import socket, AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_REUSEADDR, SO_BROADCAST
-from queue import Queue
+from queue import Queue, Empty
 from utils import *
 
 
@@ -53,17 +54,18 @@ class DHCPServer(object):
         while True:
             try:
                 message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
-                print("Received DHCP message.")
+                # print("Received DHCP message.")
                 parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
-                print(parsed_message, parsed_message['OPTIONS'][2])
+                # print(parsed_message, parsed_message['OPTIONS'][2])
                 if xid not in self.__queues:
                     if parsed_message['OPTIONS'][2:3] == b'\x01':
                         self.__queues[xid] = Queue()
-                        self.__queues[xid].add(parsed_message)
+                        self.__queues[xid].put(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
                 else:
-                    self.__queues[xid].add(self.parse_message(message))
+                    print('Here')
+                    self.__queues[xid].put(self.parse_message(message))
             except:
                 pass
 
@@ -72,12 +74,11 @@ class DHCPServer(object):
         with socket(AF_INET, SOCK_DGRAM) as sender_socket:
             destination = ('255.255.255.255', DHCPServer.client_port)
             sender_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-
             # Getting from queue
             try:
-                parsed_message = self.__queues[xid].pop()
-            except TimeoutError as e:
-                print(xid, ':', e)
+                parsed_message = self.__queues[xid].get(timeout=120)
+            except Empty as e:
+                print(xid, ':', 'Waiting for discovery timed out.')
                 return
 
             # Checking if mac address is in black list
@@ -89,16 +90,15 @@ class DHCPServer(object):
             # Sending Offer
             print(xid, ':', "Send DHCP offer.")
             ip, offer_message = self.make_offer_message(parsed_message)
-            print(self.parse_message(offer_message))
             sender_socket.sendto(offer_message, destination)
 
             while True:
                 # Getting request from queue
                 print(xid, ':', "Wait DHCP request.")
                 try:
-                    parsed_message = self.__queues[xid].pop(self.__lease_time)
-                except TimeoutError as e:
-                    print(xid, ':', e)
+                    parsed_message = self.__queues[xid].get(timeout=self.__lease_time)
+                except Empty as e:
+                    print(xid, ':', 'Lease timed out.')
                     break
                 print(xid, ':', "Receive DHCP request.")
                 print(xid, ':', "Send DHCP Ack.\n")

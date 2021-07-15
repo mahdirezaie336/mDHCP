@@ -26,7 +26,9 @@ class Queue:
 
     @synchronized
     def pop(self, timeout=120):
+        print('Before')
         put = self.__sem.acquire(timeout=timeout)
+        print('After')
         if put:
             p = self.__queue_list.pop(0)
             return p

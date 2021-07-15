@@ -15,7 +15,7 @@ class DHCPClient:
         self.__initial_interval = 10
         self.__backoff_cutoff = 120
         self.__ack_timeout = 20
-        self.__lease_time = 40
+        self.__lease_time = 10
         self.__xid = b''
 
     def start(self):
@@ -78,7 +78,6 @@ class DHCPClient:
         return b''.join(message)
 
     def make_request_message(self, your_ip_address: bytes, server_ip_address: bytes):
-        print(ip_to_str(your_ip_address))
         message = self.create_messge()
 
         # Changing YIADDR and SIADDR
