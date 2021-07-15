@@ -43,7 +43,7 @@ class DHCPServer(object):
 
             self.__lease_time = configs['lease_time']
             self.__reservation_list = configs['reservation_list']
-            self.__black_list = configs['black_list']
+            self.__black_list = {DHCPServer.convert_mac_to_bytes(i) for i in configs['black_list']}
 
     def start(self):
         print("DHCP server is starting...\n")
@@ -84,7 +84,7 @@ class DHCPServer(object):
 
             # Checking if mac address is in black list
             mac_address = parsed_message['CHADDR12'][:12]
-            if not self.mac_address_is_allowed(mac_address):
+            if mac_address in self.__black_list:
                 print(xid, ':', mac_address.decode(), 'is in black list.\n')
                 return
 
@@ -196,7 +196,7 @@ class DHCPServer(object):
         return b''.join([bytes([int(i)]) for i in parts])
 
     @staticmethod
-    def convert_mac_address_to_bytes(mac_address: str) -> bytes:
+    def convert_mac_to_bytes(mac_address: str) -> bytes:
         parts = mac_address.split(':')
         return b''.join([bytes([int(i, 16)]) for i in parts])
 
