@@ -16,7 +16,7 @@ class DHCPServer(object):
     MAX_BYTES = 1024
     __queues: dict[bytes, Queue]
 
-    def __init__(self, ip_address: str):
+    def __init__(self, ip_address: str, subnet_mask: str, dns_servers=None):
         # Loading configs from JSON file
         with open('configs.json', 'r') as config_file:
             configs = json.load(config_file)
@@ -26,7 +26,7 @@ class DHCPServer(object):
             if configs['pool_mode'] == 'range':
                 ip_range = DHCPServer.ips(configs['range']['from'], configs['range']['to'])
                 for i in ip_range:
-                    self.__ip_pool.add(i)
+                    self.__ip_pool.add(DHCPServer.convert_ip_to_bytes(i))
             elif configs['pool_mode'] == 'subnet':
                 pass
 
@@ -36,6 +36,13 @@ class DHCPServer(object):
 
         self.__queues = {}
         self.__address = DHCPServer.convert_ip_to_bytes(ip_address)
+        self.__subnet = DHCPServer.convert_ip_to_bytes(subnet_mask)
+        self.__dns_servers = []
+
+        if dns_servers is None:
+            dns_servers = ['8.8.8.8', '1.1.1.1']
+        for i in dns_servers:
+            self.__dns_servers.append(DHCPServer.convert_ip_to_bytes(i))
 
     def start(self):
         print("DHCP server is starting...\n")
@@ -82,7 +89,7 @@ class DHCPServer(object):
 
             # Sending Offer
             print(xid, ':', "Send DHCP offer.")
-            offer_message = self.make_offer_message(parsed_message)
+            offer_message = self.make_offer_message(xid)
             sender_socket.sendto(offer_message, destination)
 
             while True:
@@ -101,11 +108,27 @@ class DHCPServer(object):
     def mac_address_is_allowed(self, mac_address: bytes):
         return mac_address not in self.__black_list
 
-    def make_offer_message(self, parsed_discovery):
+    def make_offer_message(self, xid: bytes):
         # Getting an ip address from ip pool
         ip_address = self.__ip_pool.pop()
-        server_ip_address = self.__address
-        return 'packet'
+
+        # Generating message
+        message = self.create_messge()
+        message[4] = xid
+        message[8] = ip_address
+        message[9] = self.__address
+
+        # Adding options
+        message.append(b'\x35\x02\x02')                                                 # DHCP Message Type
+        message.append(b'\x01\x04' + self.__subnet)                                     # Subnet Mask
+        message.append(b'\x03\x04' + self.__address)                                    # Router Address
+        message.append(b'\x33\x04' + bytes([self.__lease_time]))                        # Lease Time
+        message.append(b'\x36\x04' + self.__address)                                    # DHCP Address
+
+        n = len(self.__dns_servers)
+        message.append(b'\x06' + bytes([n * 4]) + b''.join(self.__dns_servers))         # DNS Servers
+
+        return b''.join(message)
 
     def make_ack_message(self, parsed_request, yiaddr):
 
@@ -164,7 +187,7 @@ class DHCPServer(object):
         return [s.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
 
     @staticmethod
-    def convert_ip_to_bytes(ip_address: str):
+    def convert_ip_to_bytes(ip_address: str) -> bytes:
         parts = ip_address.split('.')
         return b''.join([bytes([int(i)]) for i in parts])
 
