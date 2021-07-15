@@ -30,22 +30,13 @@ class DHCPServer(object):
             elif configs['pool_mode'] == 'subnet':
                 pass
 
-            # Setting Lease Time
             self.__lease_time = configs['lease_time']
-
-            # Reservation List
             self.__reservation_list = configs['reservation_list']
-
-            # Black List
             self.__black_list = configs['black_list']
 
         self.queues = {}
         self.address = ip_address
-        self.dynamic_data = {}
         self.client_num = 0
-
-        Thread(target=self.leaseTime_cheker, args=()).start()
-        pass
 
     def start(self):
         print("DHCP server is starting...\n")
@@ -59,7 +50,7 @@ class DHCPServer(object):
                 print("Wait DHCP discovery.")
                 message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
                 print("Receive DHCP discovery.")
-                parsed_message = self.parseMessage(message)
+                parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
                 if xid not in self.queues:
                     if parsed_message['option1'][2:4] == b'01':
@@ -67,7 +58,7 @@ class DHCPServer(object):
                         self.queues[xid].add(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
                 else:
-                    self.queues[xid].add(self.parseMessage(message))
+                    self.queues[xid].add(self.parse_message(message))
             except:
                 pass
 
@@ -142,20 +133,7 @@ class DHCPServer(object):
             "ExpireTime": expireTime
         }
 
-    def leaseTime_cheker(self):
-        while 1:
-            now = datetime.now()
-            currentTime = now.strftime("%H:%M:%S").split(":")
-            currentTime_to_sec = int(currentTime[0]) * 3600 + int(currentTime[1] * 60) + int(currentTime[2])
-            if len(self.dynamic_data) != 0:
-                for mac in self.dynamic_data.keys():
-                    expireTime = self.dynamic_data[mac].get("ExpireTime").split(':')
-                    expireTime_to_sec = int(expireTime[0]) * 3600 + int(expireTime[1] * 60) + int(expireTime[2])
-                    if currentTime_to_sec >= expireTime_to_sec:
-                        address = self.dynamic_data.pop(mac)
-                        self.__ip_pool.add(address['IP'])
-
-    def parseMessage(self, response):
+    def parse_message(self, response):
         message = binascii.hexlify(response)
         parsed_packet = {'OP': message[0:2],
                          'HTYPE': message[2:4],
@@ -260,65 +238,28 @@ class DHCPServer(object):
 
         return packet
 
-    def message(self):
-
-        sname = []
-        bname = []
-        for i in range(192):
-            if i < 64:
-                sname.append(0)
-            else:
-                bname.append(0)
-
-        packet = {'OP': bytes([0x02]),
-                  'HTYPE': bytes([0x01]),
-                  'HLEN': bytes([0x06]),
-                  'HOPS': bytes([0x00]),
-                  'XID': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'SECS': bytes([0x00, 0x00]),
-                  'FLAGS': bytes([0x00, 0x00]),
-                  'CIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'YIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'SIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'GIADDR': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'CHADDR1': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'CHADDR2': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'CHADDR3': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'CHADDR4': bytes([0x00, 0x00, 0x00, 0x00]),
-                  'SName': bytes(sname),
-                  'BName': bytes(bname),
-                  'MCookie': bytes([0x63, 0x82, 0x53, 0x63]),
-                  'option1': bytes([53, 1, 0, 0])}
-        return packet
-
-    @staticmethod
-    def pack_get():
-        OP = bytes([0x02])
-        HTYPE = bytes([0x01])
-        HLEN = bytes([0x06])
-        HOPS = bytes([0x00])
-        XID = bytes([0x39, 0x03, 0xF3, 0x26])
-        SECS = bytes([0x00, 0x00])
-        FLAGS = bytes([0x00, 0x00])
-        CIADDR = bytes([0x00, 0x00, 0x00, 0x00])
-        YIADDR = bytes([0xC0, 0xA8, 0x01, 0x64])
-        SIADDR = bytes([0xC0, 0xA8, 0x01, 0x01])
-        GIADDR = bytes([0x00, 0x00, 0x00, 0x00])
-        CHADDR1 = bytes([0x00, 0x05, 0x3C, 0x04])
-        CHADDR2 = bytes([0x8D, 0x59, 0x00, 0x00])
-        CHADDR3 = bytes([0x00, 0x00, 0x00, 0x00])
-        CHADDR4 = bytes([0x00, 0x00, 0x00, 0x00])
-        CHADDR5 = bytes(192)
-        Magiccookie = bytes([0x63, 0x82, 0x53, 0x63])
-        DHCPOptions1 = bytes([53, 1, 5])  # DHCP ACK(value = 5)
-        DHCPOptions2 = bytes([1, 4, 0xFF, 0xFF, 0xFF, 0x00])  # 255.255.255.0 subnet mask
-        DHCPOptions3 = bytes([3, 4, 0xC0, 0xA8, 0x01, 0x01])  # 192.168.1.1 router
-        DHCPOptions4 = bytes([51, 4, 0x00, 0x01, 0x51, 0x80])  # 86400s(1 day) IP address lease time
-        DHCPOptions5 = bytes([54, 4, 0xC0, 0xA8, 0x01, 0x01])  # DHCP server
-
-        package = OP + HTYPE + HLEN + HOPS + XID + SECS + FLAGS + CIADDR + YIADDR + SIADDR + GIADDR + CHADDR1 + CHADDR2 + CHADDR3 + CHADDR4 + CHADDR5 + Magiccookie + DHCPOptions1 + DHCPOptions2 + DHCPOptions3 + DHCPOptions4 + DHCPOptions5
-
-        return package
+    def create_messge(self) -> list[bytes]:
+        """ Creates body of DHCP message without options. Options
+            are created in request or discovery methods. """
+        message = [b'\x01',  # OP
+                   b'\x01',  # HTYPE
+                   b'\x06',  # HLEN
+                   b'\x00',  # HOPS
+                   self.__xid,  # XID
+                   b'\x00\x00',  # SECS
+                   b'\x00\x00',  # FLAGS
+                   b'\x00\x00\x00\x00',  # CIADDR
+                   b'\x00\x00\x00\x00',  # YIADDR
+                   b'\x00\x00\x00\x00',  # SIADDR
+                   b'\x00\x00\x00\x00',  # GIADDR
+                   # CHADDR1 CHADDR2
+                   b''.join([binascii.unhexlify(i) for i in (self.__mac_address + ':00:00').split(':')]),
+                   b'\x00\x00\x00\x00',  # CHADDR3
+                   b'\x00\x00\x00\x00',  # CHADDR4
+                   b'\x00' * 192,  # SNAME and BNAME
+                   b'\x63\x82\x53\x63',  # Magic Cookie
+                   ]
+        return message
 
     @staticmethod
     def ips(start, end):
