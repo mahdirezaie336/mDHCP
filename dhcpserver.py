@@ -14,7 +14,7 @@ class DHCPServer(object):
     server_port = 6700
     client_port = 6800
     MAX_BYTES = 1024
-    queues: dict[bytes, Queue]
+    __queues: dict[bytes, Queue]
 
     def __init__(self, ip_address: str):
         # Loading configs from JSON file
@@ -34,9 +34,8 @@ class DHCPServer(object):
             self.__reservation_list = configs['reservation_list']
             self.__black_list = configs['black_list']
 
-        self.queues = {}
-        self.address = ip_address
-        self.client_num = 0
+        self.__queues = {}
+        self.__address = DHCPServer.convert_ip_to_bytes(ip_address)
 
     def start(self):
         print("DHCP server is starting...\n")
@@ -52,13 +51,13 @@ class DHCPServer(object):
                 print("Receive DHCP discovery.")
                 parsed_message = self.parse_message(message)
                 xid = parsed_message['XID']
-                if xid not in self.queues:
+                if xid not in self.__queues:
                     if parsed_message['option1'][2:4] == b'01':
-                        self.queues[xid] = Queue()
-                        self.queues[xid].add(parsed_message)
+                        self.__queues[xid] = Queue()
+                        self.__queues[xid].add(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
                 else:
-                    self.queues[xid].add(self.parse_message(message))
+                    self.__queues[xid].add(self.parse_message(message))
             except:
                 pass
 
@@ -70,9 +69,9 @@ class DHCPServer(object):
 
             # Getting from queue
             try:
-                parsed_message = self.queues[xid].pop()
+                parsed_message = self.__queues[xid].pop()
             except TimeoutError as e:
-                print(e)
+                print(xid, ':', e)
                 return
 
             # Checking if mac address is in black list
@@ -83,55 +82,34 @@ class DHCPServer(object):
 
             # Sending Offer
             print(xid, ':', "Send DHCP offer.")
-            offer_message = self.make_offer_message(parsed_message, ip_address)
+            offer_message = self.make_offer_message(parsed_message)
             sender_socket.sendto(offer_message, destination)
 
             while True:
                 # Getting request from queue
                 print("Wait DHCP request.")
                 try:
-                    parsed_message = self.queues[xid].pop(self.__lease_time)
+                    parsed_message = self.__queues[xid].pop(self.__lease_time)
                 except TimeoutError as e:
-                    print(e)
+                    print(xid, ':', e)
                     break
-                print("Receive DHCP request.")
-                print("Send DHCP Ack.\n")
-                ack_message = self.get_acknowledgement_message(parsed_message, ip_address)
+                print(xid, ':', "Receive DHCP request.")
+                print(xid, ':', "Send DHCP Ack.\n")
+                ack_message = self.make_ack_message(parsed_message, ip_address)
                 sender_socket.sendto(ack_message, destination)
-                self.allocate_IP(ip_address, status)
 
     def mac_address_is_allowed(self, mac_address: bytes):
         return mac_address not in self.__black_list
 
-    def make_offer_message(self, parsed_discovery, your_ip_address):
-
-
+    def make_offer_message(self, parsed_discovery):
+        # Getting an ip address from ip pool
+        ip_address = self.__ip_pool.pop()
+        server_ip_address = self.__address
         return 'packet'
 
-    def get_acknowledgement_message(self, parsed_request, yiaddr):
-        ack_dict = self.create_messge()
-        # now we should modify some fields
-        #  modify xid
-        xid = parsed_request['XID']
-        ack_dict['XID'] = bytes([int(xid[0:2], 16), int(xid[2:4], 16), int(xid[4:6], 16), int(xid[6:8], 16)])
-        #  modify yiaddr field
-        yiaddr_parts = yiaddr.split('.')
-        ack_dict['YIADDR'] = bytes(
-            [int(yiaddr_parts[0]), int(yiaddr_parts[1]), int(yiaddr_parts[2]), int(yiaddr_parts[3])])
-        #  modify siaddr
-        siaddr_parts = self.address.split('.')
-        ack_dict['SIADDR'] = bytes(
-            [int(siaddr_parts[0]), int(siaddr_parts[1]), int(siaddr_parts[2]), int(siaddr_parts[3])])
-        #  modify mac address
-        mac1 = parsed_request['CHADDR1']
-        mac2 = parsed_request['CHADDR2']
-        ack_dict['CHADDR1'] = bytes([int(mac1[0:2], 16), int(mac1[2:4], 16), int(mac1[4:6], 16), int(mac1[6:8], 16)])
-        ack_dict['CHADDR2'] = bytes([int(mac2[0:2], 16), int(mac2[2:4], 16), int(mac2[4:6], 16), int(mac2[6:8], 16)])
-        ack_dict['option1'] = bytes([0, 0, 53, 5])
-        # at the end we should join the values of dhcp ACK dictionary
-        packet = b''.join(ack_dict.values())
+    def make_ack_message(self, parsed_request, yiaddr):
 
-        return packet
+        return 'packet'
 
     def create_messge(self) -> list[bytes]:
         """ Creates body of DHCP message without options. Options
@@ -184,6 +162,11 @@ class DHCPServer(object):
         start = struct.unpack('>I', s.inet_aton(start))[0]
         end = struct.unpack('>I', s.inet_aton(end))[0]
         return [s.inet_ntoa(struct.pack('>I', i)) for i in range(start, end)]
+
+    @staticmethod
+    def convert_ip_to_bytes(ip_address: str):
+        parts = ip_address.split('.')
+        return b''.join([bytes([int(i)]) for i in parts])
 
 
 if __name__ == '__main__':
