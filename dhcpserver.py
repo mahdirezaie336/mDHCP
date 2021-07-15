@@ -104,6 +104,7 @@ class DHCPServer(object):
                 print(xid, ':', "Send DHCP Ack.\n")
                 ack_message = self.make_ack_message(parsed_message, ip)
                 sender_socket.sendto(ack_message, destination)
+            self.__ip_pool.add(ip)
 
     def mac_address_is_allowed(self, mac_address: bytes):
         return mac_address not in self.__black_list

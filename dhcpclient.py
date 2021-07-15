@@ -64,8 +64,9 @@ class DHCPClient:
 
                         # Receiving acknowledgement
                         data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
-                        print("Receive DHCP pack.\n")
-                        print(data)
+                        parsed_ack = self.parse_message(data)
+                        print("Receive DHCP ack.\n")
+                        print('IP Address:', ip_to_str(parsed_ack['YIADDR']), '\n')
                         time.sleep(self.__lease_time / 2)
                 except timeout:
                     print('DHCP acknowledgement receive timeout. Resending discovery ...')
