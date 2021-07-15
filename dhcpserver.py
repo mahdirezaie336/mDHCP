@@ -49,13 +49,12 @@ class DHCPServer(object):
 
     def start(self):
         print("DHCP server is starting...\n")
-
         server_socket = socket(AF_INET, SOCK_DGRAM)
         server_socket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         server_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         server_socket.bind(('', DHCPServer.server_port))
 
-        while 1:
+        while True:
             try:
                 print("Wait DHCP discovery.")
                 message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
@@ -64,7 +63,7 @@ class DHCPServer(object):
                 xid = parsed_message['XID']
                 if xid not in self.queues:
                     if parsed_message['option1'][2:4] == b'01':
-                        self.queues[xid] = Queue(20)
+                        self.queues[xid] = Queue()
                         self.queues[xid].add(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
                 else:
@@ -73,33 +72,33 @@ class DHCPServer(object):
                 pass
 
     def client_thread(self, xid: bytes):
-        print("Send DHCP offer.", 'xid:', xid)
-        destination = ('255.255.255.255', DHCPServer.client_port)
-
-        # Client infinite loop handler
+        # Open Sender Socket
         with socket(AF_INET, SOCK_DGRAM) as sender_socket:
+            destination = ('255.255.255.255', DHCPServer.client_port)
             sender_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+            # Getting from queue
+            try:
+                parsed_message = self.queues[xid].pop()
+            except TimeoutError as e:
+                print(e)
+                return
+
+            # Checking if mac address is in black list
+            status, ip_address = self.check_mac(parsed_message)
+            if status == "blocked":
+                print(ip_address, 'is in black list.\n')
+                return
+
+            # Sending Offer
+            print("Send DHCP offer.", 'xid:', xid)
+            offer_message = self.get_offer(parsed_message, ip_address)
+            sender_socket.sendto(offer_message, destination)
+
             while True:
-                # Getting from queue
-                try:
-                    parsed_message = self.queues[xid].pop()
-                except TimeoutError as e:
-                    print(e)
-                    break
-
-                # Checking if mac address is in black list
-                status, ip_address = self.check_mac(parsed_message)
-                if status == "blocked":
-                    print(ip_address, 'is in black list.\n')
-                    break
-
-                offer_message = self.get_offer(parsed_message, ip_address)
-                sender_socket.sendto(offer_message, destination)
-
                 # Getting request from queue
                 print("Wait DHCP request.")
                 try:
-                    parsed_message = self.queues[xid].pop()
+                    parsed_message = self.queues[xid].pop(self.__lease_time)
                 except TimeoutError as e:
                     print(e)
                     break

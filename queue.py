@@ -15,10 +15,9 @@ def synchronized(f):
 
 class Queue:
 
-    def __init__(self, sem_timeout=120):
+    def __init__(self):
         self.__queue_list = []
         self.__sem = Semaphore(0)
-        self.__sem_timeout = sem_timeout
 
     @synchronized
     def add(self, item):
@@ -26,8 +25,8 @@ class Queue:
         self.__sem.release()
 
     @synchronized
-    def pop(self):
-        put = self.__sem.acquire(timeout=self.__sem_timeout)
+    def pop(self, timeout=120):
+        put = self.__sem.acquire(timeout=timeout)
         if put:
             p = self.__queue_list.pop(0)
             return p
