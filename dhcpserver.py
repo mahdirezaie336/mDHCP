@@ -19,6 +19,7 @@ class DHCPServer(object):
         self.__address = ip_to_bytes(ip_address)
         self.__subnet = ip_to_bytes(subnet_mask)
         self.__dns_servers = []
+        self.__ip_address_table = {}
 
         # Generating DNS servers
         if dns_servers is None:
@@ -64,7 +65,6 @@ class DHCPServer(object):
                         self.__queues[xid].put(parsed_message)
                         Thread(target=self.client_thread, args=(xid,)).start()
                 else:
-                    print('Here')
                     self.__queues[xid].put(self.parse_message(message))
             except:
                 pass
@@ -100,11 +100,19 @@ class DHCPServer(object):
                 except Empty as e:
                     print(xid, ':', 'Lease timed out.')
                     break
+
+                # Sending Ack
                 print(xid, ':', "Receive DHCP request.")
                 print(xid, ':', "Send DHCP Ack.\n")
                 ack_message = self.make_ack_message(parsed_message, ip)
                 sender_socket.sendto(ack_message, destination)
+
+                # Add address to ip table
+                self.__ip_address_table[mac_address] = ip
+
+            # After lease timed out
             self.__ip_pool.add(ip)
+            del self.__ip_address_table[mac_address]
 
     def mac_address_is_allowed(self, mac_address: bytes):
         return mac_address not in self.__black_list
@@ -114,7 +122,7 @@ class DHCPServer(object):
         chaddr12 = request_message['CHADDR12']
 
         # Getting an ip address from ip pool
-        ip_address = self.get_an_ip()
+        ip_address = self.get_an_ip(chaddr12[:6])
 
         # Generating message
         message = self.create_messge()
@@ -162,7 +170,9 @@ class DHCPServer(object):
 
         return b''.join(message.values())
 
-    def get_an_ip(self):
+    def get_an_ip(self, mac_address: bytes):
+        if mac_address in self.__ip_address_table:
+            return self.__ip_address_table[mac_address]
         return self.__ip_pool.pop()
 
     def create_messge(self) -> dict[str: bytes]:

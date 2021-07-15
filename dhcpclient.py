@@ -15,7 +15,7 @@ class DHCPClient:
         self.__initial_interval = 10
         self.__backoff_cutoff = 120
         self.__ack_timeout = 20
-        self.__lease_time = 10
+        self.__lease_time = 30
         self.__xid = b''
 
     def start(self):
