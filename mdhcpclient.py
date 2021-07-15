@@ -2,16 +2,20 @@ import threading
 from socket import *
 import binascii
 import random
+import time
 
+finish = False
 # the DHCP server port
 serverPort = 6700
 # the DHCP client port
 clientPort = 6800
+my_timer: threading.Timer
 
 
 class DHCP_Client:
 
     def __init__(self, MAC_Addrress):
+
         # first interval for waiting
         self.initial_interval = 10
         # maximum time of waiting
@@ -24,53 +28,73 @@ class DHCP_Client:
         # the maximum bytes that can receive or buffer size
         self.buffer_size = 1024
         # the timer related to time of receiving ACK
-        self.timer1 = threading.Timer(self.timeout, self.run)
 
+        self.socket: socket
         # the variables related to discover timer
         self.counter = 0
         self.R = self.initial_interval
         self.P = 0.5
         self.timer_formula = 2 * self.R * self.P
-        self.timer2 = threading.Timer(self.timer_formula, self.run)
+
+        self.socket_create()
+
+    def socket_create(self):
+        self.socket = socket(AF_INET, SOCK_DGRAM)
+        self.socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+        self.socket.bind(('0.0.0.0', clientPort))
 
     def run(self):
         print('run ran')
         address, yiaddr, siaddr = self.sendDiscover()
         self.sendRequest(address, yiaddr, siaddr)
 
+        global finish
+        finish = True
+
+    def cancel_socket(self):
+        print("&&&&&&&&&&&&&&&&")
+        global my_timer
+        my_timer.cancel()
+        my_timer = threading.Timer(0, self.run)
+        my_timer.start()
+        return 0
+
     def sendDiscover(self):
+
+        timer2 = threading.Timer(self.timer_formula, self.cancel_socket)
         # the configuration of discover timer
         if self.counter > 0:
+            print("WWWWWWWWWWWW", self.counter)
             self.R = self.timer_formula
-            randNum = random.randint(1, 1000)
+            randNum = random.randint(1, 10)
             self.P = 1 / randNum
-            self.timer_formula = 2 * self.R * self.P
+            self.timer_formula = self.timer_formula + 2 * self.R * self.P
+            print(self.timer_formula)
             if self.timer_formula >= self.backoff_cutoff:
                 raise Exception("backoff_cutoff")
         # first we should broadcast a discover message and get offer message and then close connection
         print("client is starting...\n")
         destination = ('<broadcast>', serverPort)
-        client_socket = socket(AF_INET, SOCK_DGRAM)
-        client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        client_socket.bind(('0.0.0.0', clientPort))
 
         print("Send DHCP discover message.")
         discover_message = self.DHCPDiscover()
-        client_socket.sendto(discover_message, destination)
+        self.socket.sendto(discover_message, destination)
 
         # one server get the discover message that is sent recently and send offer message
         # start timer2
         self.counter += 1
-        self.timer2.start()
-        offer_message, address = client_socket.recvfrom(self.buffer_size)
-        self.timer2.cancel()
+        # if self.timer2.is_alive():
+        # self.timer2.cancel()
+        timer2.start()
+        offer_message, address = self.socket.recvfrom(self.buffer_size)
+        timer2.cancel()
         print("Receive DHCP offer.")
         # Restore the configuration of timer variables
         self.counter = 0
         self.R = self.initial_interval
         self.P = 0.5
         self.timer_formula = 2 * self.R * self.P
-        client_socket.close()
+        # self.socket.close()
 
         # we should process the offer message
         parsed_offer = self.parseMessage(offer_message)
@@ -79,31 +103,41 @@ class DHCP_Client:
         print(yiaddr)
         siaddr = [parsed_offer['SIADDR'][0:2], parsed_offer['SIADDR'][2:4], parsed_offer['SIADDR'][4:6],
                   parsed_offer['SIADDR'][6:8]]
+
         return address, yiaddr, siaddr
 
-    def sendRequest(self, address, yiaddr, siaddr, bindAdress ='0.0.0.0'):
+    def sendRequest(self, address, yiaddr, siaddr):
+        timer1 = threading.Timer(self.timeout, self.cancel_socket)
         # in the offer message , server put its address
         # now we should send a request message to that server
         destination = address[0], serverPort
+        """destination = address[0], serverPort
         client_socket = socket(AF_INET, SOCK_DGRAM)
         client_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        client_socket.bind((bindAdress, clientPort))
+        client_socket.bind((bindAdress, clientPort))"""
 
         print("Send DHCP request.")
         request_message = self.DHCPRequest(yiaddr, siaddr)
-        client_socket.sendto(request_message, destination)
+        self.socket.sendto(request_message, destination)
 
         # the timer start. if the ack isn't received we should send discover again
-        self.timer1.start()
-        ack_message, address = client_socket.recvfrom(self.buffer_size)
-        self.timer1.cancel()
+        # if self.timer1.is_alive():
+        #   self.timer1.cancel()
+        timer1.start()
+        ack_message, address = self.socket.recvfrom(self.buffer_size)
+        timer1.cancel()
         print("Receive DHCP pack.\n")
         parsed_ack = self.parseMessage(ack_message)
         YIADDR = [parsed_ack['YIADDR'][0:2], parsed_ack['YIADDR'][2:4], parsed_ack['YIADDR'][4:6],
                   parsed_ack['YIADDR'][6:8]]
-        myIP = '.'.join((str(int(YIADDR[0], 16)), str(int(YIADDR[1], 16)), str(int(YIADDR[2], 16)), str(int(YIADDR[3], 16))))
+        myIP = '.'.join(
+            (str(int(YIADDR[0], 16)), str(int(YIADDR[1], 16)), str(int(YIADDR[2], 16)), str(int(YIADDR[3], 16))))
         print("The IP address is:", myIP)
-        client_socket.close()
+
+        # time.sleep(5)
+        # self.sendRequest(address,yiaddr,siaddr)
+
+        self.socket.close()
 
     def DHCPDiscover(self):
         # first we should generate a specific xid
@@ -218,4 +252,7 @@ class DHCP_Client:
 if __name__ == '__main__':
     mac_address = [0xff, 0xc1, 0x9a, 0xd6, 0x4d, 0x02]
     client = DHCP_Client(mac_address)
-    client.run()
+    my_timer = threading.Timer(0, client.run)
+    my_timer.start()
+    # while not finish:
+    #    pass

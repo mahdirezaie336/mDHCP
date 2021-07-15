@@ -30,7 +30,7 @@ class Queue:
         if put:
             p = self.__queue_list.pop(0)
             return p
-        raise TimeoutError('Semaphore timeout.')
+        raise TimeoutError('Lease time out.')
 
     def __str__(self):
         return str(self.__queue_list)

@@ -1,40 +1,70 @@
-import socket
+import time
+from socket import AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST, socket, timeout
 import random
-
-MAX_BYTES = 1024
 
 
 class DHCPClient:
 
     server_port = 6700
     client_port = 6800
+    MAX_BYTES = 1024
 
     def __init__(self, mac_address):
         self.__mac_address = mac_address
-        pass
+        self.__initial_interval = 10
+        self.__backoff_cutoff = 120
+        self.__ack_timeout = 20
+        self.__lease_time = 40
 
     def start(self):
         print("DHCP client is starting...\n")
-        dest = ('<broadcast>', serverPort)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        s.bind(('0.0.0.0', clientPort))
 
-        print("Send DHCP discovery.")
-        data = discover_get()
-        s.sendto(data, dest)
+        # Opening Sender and Receiver Socket
+        with socket(AF_INET, SOCK_DGRAM) as sock:
+            destination = ('<broadcast>', DHCPClient.server_port)
+            sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+            sock.bind(('0.0.0.0', DHCPClient.client_port))
 
-        data, address = s.recvfrom(MAX_BYTES)
-        print("Receive DHCP offer.")
-        # print(data)
+            # A loop to repeat sending and receiving scenario
+            while True:
+                try:
+                    # Sending discovery
+                    print("Send DHCP discovery.")
+                    data = self.make_new_discovery_message()
+                    sock.sendto(data, destination)
 
-        print("Send DHCP request.")
-        data = DHCPClient.request_get()
-        s.sendto(data, dest)
+                    # Setting the socket timeout
+                    sock.settimeout(self.__initial_interval)
 
-        data, address = s.recvfrom(MAX_BYTES)
-        print("Receive DHCP pack.\n")
-        print(data)
+                    # Receiving the offer
+                    data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
+                    print("Receive DHCP offer.")
+                except timeout:
+                    new_time = self.__initial_interval * 2 * random.random()
+                    self.__initial_interval = max(new_time, self.__backoff_cutoff)
+                    print('DHCP offer receiving timeout. Resending with initial interval',
+                          self.__initial_interval, ' seconds ...')
+                    continue
+
+                # DHCP acknowledgement repeater
+                try:
+                    while True:
+                        # Sending request
+                        print("Send DHCP request.")
+                        data = self.make_new_request()
+                        sock.sendto(data, destination)
+
+                        # Setting acknowledgement timeout
+                        sock.settimeout(self.__ack_timeout)
+
+                        # Receiving acknowledgement
+                        data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
+                        print("Receive DHCP pack.\n")
+                        print(data)
+                        time.sleep(self.__lease_time/2)
+                except timeout:
+                    print('DHCP acknowledgement receive timeout. Resending discovery ...')
+                    continue
 
     def make_new_request(self):
         OP = bytes([0x01])
@@ -68,7 +98,7 @@ class DHCPClient:
         HTYPE = bytes([0x01])
         HLEN = bytes([0x06])
         HOPS = bytes([0x00])
-        XID = make_new_xid()
+        XID = self.make_new_xid()
         SECS = bytes([0x00, 0x00])
         FLAGS = bytes([0x00, 0x00])
         CIADDR = bytes([0x00, 0x00, 0x00, 0x00])
