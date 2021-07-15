@@ -70,13 +70,14 @@ class DHCPClient:
 
     def make_new_request(self):
 
-
-        return
+        return b''
 
     def make_new_discovery_message(self):
 
+        return b''
 
-        return
+    def refresh_xid(self):
+        self.__xid = b''.join([bytes([random.randint(0, 255)]) for i in range(4)])
 
     def create_messge(self) -> list[bytes]:
         message = [b'\x01',                             # OP
@@ -96,12 +97,32 @@ class DHCPClient:
                    b'\x00\x00\x00\x00',                 # CHADDR4
                    b'\x00' * 192,                       # SNAME and BNAME
                    b'\x63\x82\x53\x63'                  # Magic Cookie
-                   b'\x00\x00\x53\x01'                  # OPTION1
+                   b'\x35\x02\x01'                      # OPTION1
                    ]
         return message
 
-    def refresh_xid(self) -> bytes:
-        self.__xid = b''.join([bytes([random.randint(0, 255)]) for i in range(4)])
+    def parse_message(self, response):
+        message = binascii.hexlify(response)
+        parsed_packet = {'OP': message[0:2],
+                         'HTYPE': message[2:4],
+                         'HLEN': message[4:6],
+                         'HOPS': message[6:8],
+                         'XID': message[8:16],
+                         'SECS': message[16:20],
+                         'FLAGS': message[20:24],
+                         'CIADDR': message[24:32],
+                         'YIADDR': message[32:40],
+                         'SIADDR': message[40:48],
+                         'GIADDR': message[48:56],
+                         'CHADDR1': message[56:64],
+                         'CHADDR2': message[64:72],
+                         'CHADDR3': message[72:80],
+                         'CHADDR4': message[80:88],
+                         'SName': message[88:216],
+                         'BName': message[216:472],
+                         'MCookie': message[472:480],
+                         'option1': message[480:488]}
+        return parsed_packet
 
 
 if __name__ == '__main__':
