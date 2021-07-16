@@ -58,3 +58,18 @@ def mac_to_str(mac_address: bytes):
 def bin_to_str(binary: bytes):
     """ Converts binary to string """
     return binascii.hexlify(binary).decode()
+
+
+def ip_range_by_subnet(ip_block, subnet_mask):
+    """ Gets a list of all IPs by ip and subnet massk. """
+    ip_block_parts = ip_block.split('.')
+    start = int(ip_block_parts[4]) + 1
+    ip_block_parts[4] = str(start)
+    ip_from = '.'.join(ip_block_parts)
+
+    subnet_mask_parts = subnet_mask.split('.')
+    ip_number = 255 - int(subnet_mask_parts[4])
+    ip_block_parts[4] = str(start + ip_number)
+    ip_to = '.'.join(ip_block_parts)
+
+    return ips(ip_from, ip_to)

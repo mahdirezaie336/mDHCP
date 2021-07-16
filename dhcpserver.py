@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 
 
 class DHCPServer(object):
+    """ This class is the DHCP server which first listens to the specified UDP port.
+        When it gets requests from any clients, sends offer and acknowledgement to
+        them and handle them on a separated thread. """
 
     server_port = 6700
     client_port = 6800
@@ -39,7 +42,9 @@ class DHCPServer(object):
                 for i in ip_range:
                     self.__ip_pool.add(ip_to_bytes(i))
             elif configs['pool_mode'] == 'subnet':
-                pass
+                ip_range = ip_range_by_subnet(configs['subnet']['ip_block'], configs['subnet']['subnet_mask'])
+                for i in ip_range:
+                    self.__ip_pool.add(ip_to_bytes(i))
 
             reservation_list = {}
             for key in configs['reservation_list']:
@@ -50,6 +55,10 @@ class DHCPServer(object):
             self.__black_list = {mac_to_bytes(i) for i in configs['black_list']}
 
     def start(self):
+        """ Starts listening on the specified port and waiting for a broadcast message.
+            If got one, passes them on their thread or makes a new thread. Then the thread
+            handles the client."""
+
         print("DHCP server is starting...\n")
         print("Wait DHCP discovery.")
         server_socket = socket(AF_INET, SOCK_DGRAM)
@@ -60,10 +69,13 @@ class DHCPServer(object):
         # Staring interpreter
         Thread(target=self.interpreter_thread).start()
 
+        # The listener
         while True:
             message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
             parsed_message = self.parse_message(message)
             xid = parsed_message['XID']
+
+            # If message is a new request
             if xid not in self.__queues:
                 if parsed_message['OPTIONS'][2:3] == b'\x01':
                     self.__queues[xid] = Queue()
@@ -73,6 +85,11 @@ class DHCPServer(object):
                 self.__queues[xid].put(self.parse_message(message))
 
     def client_thread(self, xid: bytes):
+        """ This is client handling thread. After getting a discovery this thread run
+            and sends offer and ack when needed.
+            :param xid The XID related to this session
+            """
+
         prefix = bin_to_str(xid) + ':'
         # Open Sender Socket
         with socket(AF_INET, SOCK_DGRAM) as sender_socket:
@@ -125,12 +142,15 @@ class DHCPServer(object):
             del self.__ip_address_table[mac_address]
 
     def interpreter_thread(self):
+        """ This will be run on a thread to get input from user to show connected clients. """
         while True:
             inp = input()
             if inp.startswith('s'):
                 print(self.__ip_address_table)
 
     def make_offer_message(self, request_message: dict[str: bytes]):
+        """ This creates offer message and returns it. """
+
         xid = request_message['XID']
         chaddr12 = request_message['CHADDR12']
 
@@ -159,6 +179,8 @@ class DHCPServer(object):
         return ip_address, b''.join(message.values())
 
     def make_ack_message(self, request_message: dict[str: bytes], client_ip: bytes):
+        """ This creates ack message and returns it. """
+
         xid = request_message['XID']
         chaddr12 = request_message['CHADDR12']
 
@@ -184,6 +206,8 @@ class DHCPServer(object):
         return b''.join(message.values())
 
     def get_an_ip(self, mac_address: bytes) -> bytes:
+        """ Gets an ip from ip pool considering the conditions """
+
         # If lease time is not out
         if mac_address in self.__ip_address_table:
             return self.__ip_address_table[mac_address][0]
@@ -219,7 +243,7 @@ class DHCPServer(object):
         return message
 
     def parse_message(self, message):
-        # message = binascii.hexlify(response)
+        """ Parses the response message. """
         parsed_packet = {'OP': message[0:1],
                          'HTYPE': message[1:2],
                          'HLEN': message[2:3],
