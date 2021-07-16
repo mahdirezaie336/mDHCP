@@ -1,4 +1,3 @@
-import binascii
 import time
 from socket import AF_INET, SOCK_DGRAM, SOL_SOCKET, SO_BROADCAST, socket, timeout
 import random
@@ -6,6 +5,12 @@ from utils import *
 
 
 class DHCPClient:
+    """ The dhcp client simulation.
+        This class is creates DHCP discovery and DHCP request and broadcasts them into
+        networks. First sends discovery message. If got offer, it parses offer and sends
+        request. If server accepted request, sends an acknowledgement. By receiving ack
+        this client prints the IP that received."""
+
     server_port = 6700
     client_port = 6800
     MAX_BYTES = 1024
@@ -19,6 +24,8 @@ class DHCPClient:
         self.__xid = b''
 
     def start(self):
+        """ Starts the client by sending DHCP discovery and waiting for offer. """
+
         print("DHCP client is starting...\n")
 
         # Opening Sender and Receiver Socket
@@ -47,7 +54,7 @@ class DHCPClient:
                     new_time = self.__initial_interval * 2 * random.random() + self.__initial_interval
                     self.__initial_interval = min(new_time, self.__backoff_cutoff)
                     print('DHCP offer receiving timeout. Resending with initial interval',
-                          self.__initial_interval, ' seconds ...')
+                          self.__initial_interval, ' seconds ...\n')
                     continue
 
                 parsed_offer = self.parse_message(data)
@@ -76,6 +83,10 @@ class DHCPClient:
                     continue
 
     def check_and_receive(self, sock: socket, msg_type: int):
+        """ Checks whether the message we got has a specific type and has
+            XID like what sent previously. Actually checks if the received
+            message belongs to us. If no drops the message and waits again. """
+
         while True:
             data, address = sock.recvfrom(DHCPClient.MAX_BYTES)
             parsed = self.parse_message(data)
@@ -84,13 +95,17 @@ class DHCPClient:
                 return data, address
 
     def make_discovery_message(self):
-        message = self.create_messge()
+        """ Creates discovery message to broadcast. """
+
+        message = self.create_message()
         # Adding options
         message.append(b'\x35\x01\x01')
         return b''.join(message)
 
     def make_request_message(self, your_ip_address: bytes, server_ip_address: bytes):
-        message = self.create_messge()
+        """ Creates request message to broadcast. """
+
+        message = self.create_message()
 
         # Changing YIADDR and SIADDR
         message[8] = your_ip_address
@@ -103,11 +118,14 @@ class DHCPClient:
         return b''.join(message)
 
     def refresh_xid(self):
+        """ Changes XID to a random number. """
+
         self.__xid = b''.join([bytes([random.randint(0, 255)]) for i in range(4)])
 
-    def create_messge(self) -> list[bytes]:
+    def create_message(self) -> list[bytes]:
         """ Creates body of DHCP message without options. Options
             are created in request or discovery methods. """
+
         message = [b'\x01',                             # OP
                    b'\x01',                             # HTYPE
                    b'\x06',                             # HLEN
@@ -128,8 +146,9 @@ class DHCPClient:
                    ]
         return message
 
-    def parse_message(self, message):
-        # message = binascii.hexlify(response)
+    def parse_message(self, message: bytes) -> dict[str: bytes]:
+        """ Parses the message client got, into DHCP fields. """
+
         parsed_packet = {'OP': message[0:1],
                          'HTYPE': message[1:2],
                          'HLEN': message[2:3],
