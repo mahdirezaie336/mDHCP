@@ -41,8 +41,12 @@ class DHCPServer(object):
             elif configs['pool_mode'] == 'subnet':
                 pass
 
+            reservation_list = {}
+            for key in configs['reservation_list']:
+                reservation_list[mac_to_bytes(key)] = ip_to_bytes(configs['reservation_list'][key])
+
             self.__lease_time = configs['lease_time']
-            self.__reservation_list = configs['reservation_list']
+            self.__reservation_list = reservation_list
             self.__black_list = {mac_to_bytes(i) for i in configs['black_list']}
 
     def start(self):
@@ -80,7 +84,7 @@ class DHCPServer(object):
             # Checking if mac address is in black list
             mac_address = parsed_message['CHADDR12'][:6]
             if mac_address in self.__black_list:
-                print(xid, ':', mac_address.decode(), 'is in black list.\n')
+                print(xid, ':', mac_to_str(mac_address), 'is in black list.\n')
                 return
 
             # Sending Offer
@@ -170,8 +174,16 @@ class DHCPServer(object):
         return b''.join(message.values())
 
     def get_an_ip(self, mac_address: bytes) -> bytes:
+        # If lease time is not out
         if mac_address in self.__ip_address_table:
             return self.__ip_address_table[mac_address][0]
+
+        # If mac address is in reservation list
+        if mac_address in self.__reservation_list:
+            ip = self.__reservation_list[mac_address]
+            self.__ip_pool.remove(ip)
+            return ip
+
         return self.__ip_pool.pop()
 
     def create_messge(self) -> dict[str: bytes]:

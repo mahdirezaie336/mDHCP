@@ -152,5 +152,5 @@ class DHCPClient:
 
 
 if __name__ == '__main__':
-    client = DHCPClient('14:cc:20:f3:8b:ea')
+    client = DHCPClient('14:cc:20:f3:8b:ec')
     client.start()
