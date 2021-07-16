@@ -29,3 +29,7 @@ def bin_to_int(number: bytes):
 
 def mac_to_str(mac_address: bytes):
     return ':'.join([binascii.hexlify(mac_address[i: i+1]).decode() for i in range(0, 6)])
+
+
+def bin_to_str(bin: bytes):
+    return binascii.hexlify(bin).decode()

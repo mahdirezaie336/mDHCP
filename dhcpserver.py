@@ -73,6 +73,7 @@ class DHCPServer(object):
                 self.__queues[xid].put(self.parse_message(message))
 
     def client_thread(self, xid: bytes):
+        prefix = bin_to_str(xid) + ':'
         # Open Sender Socket
         with socket(AF_INET, SOCK_DGRAM) as sender_socket:
             destination = ('255.255.255.255', DHCPServer.client_port)
@@ -81,23 +82,23 @@ class DHCPServer(object):
             try:
                 parsed_message = self.__queues[xid].get(timeout=120)
             except Empty as e:
-                print(xid, ':', 'Waiting for discovery timed out.')
+                print(prefix, 'Waiting for discovery timed out.')
                 return
 
             # Checking if mac address is in black list
             mac_address = parsed_message['CHADDR12'][:6]
             if mac_address in self.__black_list:
-                print(xid, ':', mac_to_str(mac_address), 'is in black list.\n')
+                print(prefix, mac_to_str(mac_address), 'is in black list.\n')
                 return
 
             # Sending Offer
-            print(xid, ':', "Send DHCP offer.")
+            print(prefix, "Send DHCP offer.")
             ip, offer_message = self.make_offer_message(parsed_message)
             sender_socket.sendto(offer_message, destination)
 
             while True:
                 # Getting request from queue
-                print(xid, ':', "Wait DHCP request.")
+                print(prefix, "Wait DHCP request.")
                 try:
                     parsed_message = self.__queues[xid].get(timeout=self.__lease_time)
                     # print(parsed_message['SIADDR'] == self.__address)
@@ -105,12 +106,12 @@ class DHCPServer(object):
                         print('The client chose another DHCP with address', ip_to_str(parsed_message['SIADDR']))
                         break
                 except Empty as e:
-                    print(xid, ':', 'Lease timed out.')
+                    print(prefix, 'Lease timed out.')
                     break
 
                 # Sending Ack
-                print(xid, ':', "Receive DHCP request.")
-                print(xid, ':', "Send DHCP Ack.\n")
+                print(prefix, "Receive DHCP request.")
+                print(prefix, "Send DHCP Ack.\n")
                 ack_message = self.make_ack_message(parsed_message, ip)
                 sender_socket.sendto(ack_message, destination)
 
