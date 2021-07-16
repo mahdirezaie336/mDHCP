@@ -57,6 +57,9 @@ class DHCPServer(object):
         server_socket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         server_socket.bind(('', DHCPServer.server_port))
 
+        # Staring interpreter
+        Thread(target=self.interpreter_thread).start()
+
         while True:
             message, address = server_socket.recvfrom(DHCPServer.MAX_BYTES)
             parsed_message = self.parse_message(message)
@@ -113,12 +116,18 @@ class DHCPServer(object):
 
                 # Add address and other info to ip table
                 computer_name = 'DESKTOP-' + str(random.randint(0, 2571003))
-                table_row = ip, computer_name, datetime.now() + timedelta(seconds=self.__lease_time)
+                table_row = ip, computer_name, str(datetime.now() + timedelta(seconds=self.__lease_time))
                 self.__ip_address_table[mac_address] = table_row
 
             # After lease timed out
             self.__ip_pool.add(ip)
             del self.__ip_address_table[mac_address]
+
+    def interpreter_thread(self):
+        while True:
+            inp = input()
+            if inp.startswith('s'):
+                print(self.__ip_address_table)
 
     def make_offer_message(self, request_message: dict[str: bytes]):
         xid = request_message['XID']
