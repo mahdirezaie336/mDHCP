@@ -139,7 +139,8 @@ class DHCPServer(object):
 
             # After lease timed out
             self.__ip_pool.add(ip)
-            del self.__ip_address_table[mac_address]
+            if mac_address in self.__ip_address_table:
+                del self.__ip_address_table[mac_address]
 
     def interpreter_thread(self):
         """ This will be run on a thread to get input from user to show connected clients. """
